@@ -1,11 +1,21 @@
-use crate::bruijn::{de, DeBruijnTerm, Var};
+use crate::{
+    bruijn::{de, DeBruijnTerm, Type},
+    typeck::{self, shift_type},
+    var::Var,
+};
 
 pub fn eval(term: DeBruijnTerm) -> DeBruijnTerm {
-    use DeBruijnTerm::{TmApp, TmAbs};
+    use DeBruijnTerm::*;
     match term {
         TmApp(f, x) => match (eval(*f), eval(*x)) {
             (TmAbs(_, y), x) => eval(unshift(subst(shift(x, 1), *y))),
-            (f, x) => de::app(f, x)
+            (f, x) => de::app(f, x),
+        },
+        TmTyApp(f, t) => match eval(*f) {
+            TmTyAbs(y) => {
+                eval(unshift_type(subst_type(shift_type(t, 0), *y, 0), 0))
+            }
+            term => term,
         },
         term => term,
     }
@@ -21,6 +31,38 @@ fn shift(term: DeBruijnTerm, inc: usize) -> DeBruijnTerm {
 
 fn unshift(term: DeBruijnTerm) -> DeBruijnTerm {
     Shifter(|x| x - 1).shift(term, 0)
+}
+
+fn subst_type(with: Type, term: DeBruijnTerm, depth: usize) -> DeBruijnTerm {
+    use DeBruijnTerm::*;
+    match term {
+        TmUnit => de::unit(),
+        TmVar(k) => de::var(k),
+        TmAbs(ty, y) => de::abs(typeck::subst_type(ty, with, depth), *y),
+        TmApp(f, x) => de::app(
+            subst_type(with.clone(), *f, depth),
+            subst_type(with, *x, depth),
+        ),
+        TmTyAbs(body) => de::ty_abs(subst_type(with, *body, depth + 1)),
+        TmTyApp(f, x) => de::ty_app(
+            subst_type(with.clone(), *f, depth),
+            typeck::subst_type(x, with, depth),
+        ),
+    }
+}
+
+fn unshift_type(term: DeBruijnTerm, thr: usize) -> DeBruijnTerm {
+    use DeBruijnTerm::*;
+    match term {
+        TmUnit => de::unit(),
+        TmVar(k) => de::var(k),
+        TmAbs(ty, y) => de::abs(typeck::unshift_type(ty, thr), *y),
+        TmApp(f, x) => de::app(unshift_type(*f, thr), unshift_type(*x, thr)),
+        TmTyAbs(body) => de::ty_abs(unshift_type(*body, thr + 1)),
+        TmTyApp(f, x) => {
+            de::ty_app(unshift_type(*f, thr), typeck::unshift_type(x, thr))
+        }
+    }
 }
 
 struct Substitutor(DeBruijnTerm);

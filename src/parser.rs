@@ -3,21 +3,30 @@ use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{char, space0},
-    combinator::{all_consuming, cut, map},
+    combinator::{all_consuming, cut, map, value},
     error::{convert_error, VerboseError},
-    multi::{many1, separated_list1},
+    multi::{many0, separated_list1},
     sequence::{delimited, preceded, tuple},
     IResult,
 };
-
-use crate::typeck::{ty, Type};
 
 #[derive(Debug, Clone)]
 pub enum InputTerm {
     TmUnit,
     TmVar(String),
-    TmAbs(String, Type, Box<InputTerm>),
+    TmAbs(String, InputType, Box<InputTerm>),
     TmApp(Box<InputTerm>, Box<InputTerm>),
+    TmTyAbs(String, Box<InputTerm>),
+    TmTyApp(Box<InputTerm>, InputType),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InputType {
+    TyUnit,
+    TyHole,
+    TyVar(String),
+    TyArrow(Box<InputType>, Box<InputType>),
+    TyForall(String, Box<InputType>),
 }
 
 pub fn parse(text: &str) -> Result<InputTerm, String> {
@@ -31,15 +40,33 @@ pub fn parse(text: &str) -> Result<InputTerm, String> {
 
 type Res<'a, T = InputTerm> = IResult<&'a str, T, VerboseError<&'a str>>;
 
+enum Either {
+    Type(InputType),
+    Term(InputTerm),
+}
+
 fn parse_term(text: &str) -> Res {
+    use Either::*;
     map(
-        many1(spaced(alt((
-            parse_lambda,
-            parens(or(parse_term, inp::unit)),
-            map(lex_var, inp::var),
-        )))),
-        |terms| terms.into_iter().fold1(inp::app).unwrap(),
+        tuple((
+            spaced(parse_app),
+            many0(spaced(alt((map(parse_app, Term), map(parse_tyapp, Type))))),
+        )),
+        |(head, tail)| tail.into_iter().fold(head, inp::gen_app),
     )(text)
+}
+
+fn parse_app(text: &str) -> Res {
+    alt((
+        parse_lambda,
+        parse_tyabs,
+        parens(or(parse_term, inp::unit)),
+        map(lex_var, inp::var),
+    ))(text)
+}
+
+fn parse_tyapp(text: &str) -> Res<InputType> {
+    delimited(char('['), parse_type, char(']'))(text)
 }
 
 fn parse_lambda(text: &str) -> Res {
@@ -56,10 +83,39 @@ fn parse_lambda(text: &str) -> Res {
     )(text)
 }
 
-fn parse_type(text: &str) -> Res<Type> {
+fn parse_tyabs(text: &str) -> Res {
     map(
-        separated_list1(tag("->"), spaced(parens(or(parse_type, ty::unit)))),
+        preceded(
+            tag(r"/\"),
+            cut(tuple((spaced(lex_var), preceded(char('.'), parse_term)))),
+        ),
+        |(param_name, body)| inp::tyabs(param_name, body),
+    )(text)
+}
+
+fn parse_type(text: &str) -> Res<InputType> {
+    use inp::ty;
+    map(
+        separated_list1(
+            tag("->"),
+            spaced(alt((
+                parse_forall,
+                parens(or(parse_type, ty::unit)),
+                map(lex_var, ty::var),
+                value(ty::hole(), char('_')),
+            ))),
+        ),
         |types| rfold1(types.into_iter(), ty::arr).unwrap(),
+    )(text)
+}
+
+fn parse_forall(text: &str) -> Res<InputType> {
+    map(
+        preceded(
+            tag(r"/\"),
+            cut(tuple((spaced(lex_var), preceded(char('.'), parse_type)))),
+        ),
+        |(param_name, body_type)| inp::ty::forall(param_name, body_type),
     )(text)
 }
 
@@ -94,8 +150,7 @@ fn rfold1<T>(
 }
 
 pub mod inp {
-    use super::InputTerm;
-    use crate::typeck::Type;
+    use super::{Either, InputTerm, InputType};
 
     pub fn unit() -> InputTerm {
         InputTerm::TmUnit
@@ -105,11 +160,55 @@ pub mod inp {
         InputTerm::TmVar(name.into())
     }
 
-    pub fn abs(par: impl Into<String>, ty: Type, body: InputTerm) -> InputTerm {
+    pub fn abs(
+        par: impl Into<String>,
+        ty: InputType,
+        body: InputTerm,
+    ) -> InputTerm {
         InputTerm::TmAbs(par.into(), ty, Box::new(body))
+    }
+
+    pub fn tyabs(par: impl Into<String>, body: InputTerm) -> InputTerm {
+        InputTerm::TmTyAbs(par.into(), Box::new(body))
+    }
+
+    pub(super) fn gen_app(f: InputTerm, x: Either) -> InputTerm {
+        use Either::*;
+        match x {
+            Term(x) => app(f, x),
+            Type(x) => tyapp(f, x),
+        }
     }
 
     pub fn app(f: InputTerm, x: InputTerm) -> InputTerm {
         InputTerm::TmApp(Box::new(f), Box::new(x))
+    }
+
+    pub fn tyapp(f: InputTerm, x: InputType) -> InputTerm {
+        InputTerm::TmTyApp(Box::new(f), x)
+    }
+
+    pub mod ty {
+        use super::InputType;
+
+        pub fn unit() -> InputType {
+            InputType::TyUnit
+        }
+
+        pub fn hole() -> InputType {
+            InputType::TyHole
+        }
+
+        pub fn var(name: impl Into<String>) -> InputType {
+            InputType::TyVar(name.into())
+        }
+
+        pub fn arr(from: InputType, to: InputType) -> InputType {
+            InputType::TyArrow(Box::new(from), Box::new(to))
+        }
+
+        pub fn forall(par: impl Into<String>, body: InputType) -> InputType {
+            InputType::TyForall(par.into(), Box::new(body))
+        }
     }
 }

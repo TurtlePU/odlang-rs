@@ -1,33 +1,15 @@
-use crate::bruijn::{DeBruijnTerm, Var};
+use crate::{
+    bruijn::{de::ty, DeBruijnTerm, Type},
+    var::Var,
+};
 use thiserror::Error;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Type {
-    TyUnit,
-    TyHole,
-    TyArrow(Box<Type>, Box<Type>),
-}
-
-pub mod ty {
-    use super::Type;
-
-    pub fn unit() -> Type {
-        Type::TyUnit
-    }
-
-    pub fn hole() -> Type {
-        Type::TyHole
-    }
-
-    pub fn arr(from: Type, to: Type) -> Type {
-        Type::TyArrow(Box::new(from), Box::new(to))
-    }
-}
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TypeckError {
     #[error("Not a function: '{0:?}'")]
     NotAFunction(Type),
+    #[error("Not a type abstraction: '{0:?}'")]
+    NotAForall(Type),
     #[error("Types must be equal: '{0:?}', '{1:?}'")]
     NotEqual(Type, Type),
 }
@@ -53,7 +35,9 @@ impl Typeck {
                 self.0.pop();
                 Ok(ty::arr(t, ytype))
             }
-            TmApp(f, x) => assert_app(self.typeck(*f)?, self.typeck(*x)?)
+            TmApp(f, x) => assert_app(self.typeck(*f)?, self.typeck(*x)?),
+            TmTyAbs(x) => self.typeck(*x).map(ty::forall),
+            TmTyApp(f, t) => assert_ty_app(self.typeck(*f)?, t),
         }
     }
 
@@ -72,10 +56,61 @@ fn assert_app(fun: Type, arg: Type) -> Result<Type, TypeckError> {
     }
 }
 
+fn assert_ty_app(fun: Type, arg: Type) -> Result<Type, TypeckError> {
+    use Type::*;
+    use TypeckError::*;
+    match fun {
+        TyForall(inner) => Ok(unshift_type(subst_type(*inner, shift_type(arg, 0), 0), 0)),
+        _ => Err(NotAForall(fun.clone())),
+    }
+}
+
+pub fn shift_type(body: Type, thr: usize) -> Type {
+    use Type::*;
+    use Var::*;
+    match body {
+        TyUnit => ty::unit(),
+        TyHole => ty::hole(),
+        TyVar(Bound(i)) if i >= thr => ty::var(i + 1),
+        TyVar(free) => ty::var(free),
+        TyArrow(from, to) => ty::arr(shift_type(*from, thr), shift_type(*to, thr)),
+        TyForall(x) => ty::forall(shift_type(*x, thr + 1)),
+    }
+}
+
+pub fn unshift_type(body: Type, thr: usize) -> Type {
+    use Type::*;
+    use Var::*;
+    match body {
+        TyUnit => ty::unit(),
+        TyHole => ty::hole(),
+        TyVar(Bound(i)) if i >= thr => ty::var(i - 1),
+        TyVar(free) => ty::var(free),
+        TyArrow(from, to) => ty::arr(unshift_type(*from, thr), unshift_type(*to, thr)),
+        TyForall(x) => ty::forall(unshift_type(*x, thr + 1)),
+    }
+}
+
+pub fn subst_type(body: Type, with: Type, depth: usize) -> Type {
+    use Type::*;
+    use Var::*;
+    match body {
+        TyUnit => ty::unit(),
+        TyHole => ty::hole(),
+        TyVar(Bound(i)) if i == depth => with,
+        TyVar(other) => ty::var(other),
+        TyArrow(from, to) => ty::arr(
+            subst_type(*from, with.clone(), depth),
+            subst_type(*to, with.clone(), depth),
+        ),
+        TyForall(x) => ty::forall(subst_type(*x, with, depth + 1)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{typeck, ty};
-    use crate::bruijn::de;
+    use super::typeck;
+    use crate::bruijn::de::{self, ty};
 
     #[test]
     fn simple_typeck() {
