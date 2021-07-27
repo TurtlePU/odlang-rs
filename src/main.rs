@@ -3,7 +3,7 @@ mod typeck;
 mod eval;
 mod repl;
 mod parser;
-mod var;
+mod pprint;
 
 fn main() {
     println!("{:?}", repl::repl());

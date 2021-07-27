@@ -40,19 +40,26 @@ pub fn parse(text: &str) -> Result<InputTerm, String> {
 
 type Res<'a, T = InputTerm> = IResult<&'a str, T, VerboseError<&'a str>>;
 
-enum Either {
-    Type(InputType),
-    Term(InputTerm),
-}
-
 fn parse_term(text: &str) -> Res {
+    enum Either {
+        Type(InputType),
+        Term(InputTerm),
+    }
     use Either::*;
     map(
         tuple((
             spaced(parse_app),
-            many0(spaced(alt((map(parse_app, Term), map(parse_tyapp, Type))))),
+            many0(spaced(alt((
+                map(parse_app, Term),
+                map(delimited(char('['), parse_type, char(']')), Type),
+            )))),
         )),
-        |(head, tail)| tail.into_iter().fold(head, inp::gen_app),
+        |(head, tail)| {
+            tail.into_iter().fold(head, |f, x| match x {
+                Term(x) => inp::app(f, x),
+                Type(x) => inp::tyapp(f, x),
+            })
+        },
     )(text)
 }
 
@@ -63,10 +70,6 @@ fn parse_app(text: &str) -> Res {
         parens(or(parse_term, inp::unit)),
         map(lex_var, inp::var),
     ))(text)
-}
-
-fn parse_tyapp(text: &str) -> Res<InputType> {
-    delimited(char('['), parse_type, char(']'))(text)
 }
 
 fn parse_lambda(text: &str) -> Res {
@@ -113,7 +116,7 @@ fn parse_forall(text: &str) -> Res<InputType> {
     map(
         preceded(
             tag(r"/\"),
-            cut(tuple((spaced(lex_var), preceded(char('.'), parse_type)))),
+            cut(tuple((spaced(lex_var), preceded(tag("=>"), parse_type)))),
         ),
         |(param_name, body_type)| inp::ty::forall(param_name, body_type),
     )(text)
@@ -150,7 +153,7 @@ fn rfold1<T>(
 }
 
 pub mod inp {
-    use super::{Either, InputTerm, InputType};
+    use super::{InputTerm, InputType};
 
     pub fn unit() -> InputTerm {
         InputTerm::TmUnit
@@ -170,14 +173,6 @@ pub mod inp {
 
     pub fn tyabs(par: impl Into<String>, body: InputTerm) -> InputTerm {
         InputTerm::TmTyAbs(par.into(), Box::new(body))
-    }
-
-    pub(super) fn gen_app(f: InputTerm, x: Either) -> InputTerm {
-        use Either::*;
-        match x {
-            Term(x) => app(f, x),
-            Type(x) => tyapp(f, x),
-        }
     }
 
     pub fn app(f: InputTerm, x: InputTerm) -> InputTerm {

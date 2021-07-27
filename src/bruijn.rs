@@ -1,16 +1,13 @@
-use crate::{
-    parser::{InputTerm, InputType},
-    var::Var,
-};
+use crate::parser::{InputTerm, InputType};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum DeBruijnTerm {
+pub enum Term {
     TmUnit,
     TmVar(Var),
-    TmAbs(Type, Box<DeBruijnTerm>),
-    TmApp(Box<DeBruijnTerm>, Box<DeBruijnTerm>),
-    TmTyAbs(Box<DeBruijnTerm>),
-    TmTyApp(Box<DeBruijnTerm>, Type),
+    TmAbs(String, Type, Box<Term>),
+    TmApp(Box<Term>, Box<Term>),
+    TmTyAbs(String, Box<Term>),
+    TmTyApp(Box<Term>, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -19,122 +16,112 @@ pub enum Type {
     TyHole,
     TyVar(Var),
     TyArrow(Box<Type>, Box<Type>),
-    TyForall(Box<Type>),
+    TyForall(String, Box<Type>),
 }
 
-pub fn de_bruijn(term: InputTerm) -> DeBruijnTerm {
-    Renamer::default().de_bruijn(term)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Var {
+    Free(String),
+    Bound(usize, String),
 }
 
-enum Renamer<'a> {
-    Empty,
-    WithValue(&'a Renamer<'a>, String),
-    WithType(&'a Renamer<'a>, String),
+pub fn de_bruijn(term: InputTerm) -> Term {
+    Context(None).rename_term(term)
 }
 
-impl<'a> Default for Renamer<'a> {
-    fn default() -> Self {
-        Renamer::Empty
-    }
+struct Context<'a>(Option<(&'a Context<'a>, Either, String)>);
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Either {
+    Term,
+    Type,
 }
 
-impl<'a> Renamer<'a> {
-    fn de_bruijn(&'a self, term: InputTerm) -> DeBruijnTerm {
+impl<'a> Context<'a> {
+    fn rename_term(&'a self, term: InputTerm) -> Term {
+        use Either::*;
         use InputTerm::*;
         match term {
             TmUnit => de::unit(),
-            TmVar(x) => de::var(self.bind(x)),
-            TmApp(f, x) => de::app(self.de_bruijn(*f), self.de_bruijn(*x)),
-            TmAbs(x, t, y) => {
-                de::abs(self.de_bruijn_type(t), self.add_value(x).de_bruijn(*y))
-            }
-            TmTyAbs(t, x) => de::ty_abs(self.add_type(t).de_bruijn(*x)),
-            TmTyApp(f, x) => {
-                de::ty_app(self.de_bruijn(*f), self.de_bruijn_type(x))
-            }
-        }
-    }
-
-    fn de_bruijn_type(&'a self, t: InputType) -> Type {
-        use Type::*;
-        match t {
-            InputType::TyUnit => TyUnit,
-            InputType::TyHole => TyHole,
-            InputType::TyVar(x) => TyVar(self.bind_type(x)),
-            InputType::TyArrow(from, to) => TyArrow(
-                Box::new(self.de_bruijn_type(*from)),
-                Box::new(self.de_bruijn_type(*to)),
+            TmVar(x) => de::var(self.find(Term, x)),
+            TmApp(f, x) => de::app(self.rename_term(*f), self.rename_term(*x)),
+            TmAbs(x, t, y) => de::abs(
+                x.clone(),
+                self.rename_type(t),
+                self.with(Term, x).rename_term(*y),
             ),
-            InputType::TyForall(param, body) => {
-                TyForall(Box::new(self.add_type(param).de_bruijn_type(*body)))
+            TmTyAbs(t, x) => {
+                de::ty_abs(t.clone(), self.with(Type, t).rename_term(*x))
+            }
+            TmTyApp(f, x) => {
+                de::ty_app(self.rename_term(*f), self.rename_type(x))
             }
         }
     }
 
-    fn bind_type(&'a self, name: String) -> Var {
-        use Renamer::*;
-        use Var::*;
-        match self {
-            WithType(_, ref k) if *k == name => Bound(0),
-            WithType(prev, _) => match prev.bind(name) {
-                Bound(i) => Bound(i + 1),
-                free => free,
-            },
-            WithValue(prev, _) => prev.bind(name),
-            Empty => Free(name),
+    fn rename_type(&'a self, t: InputType) -> Type {
+        use de::ty;
+        use Either::Type;
+        use InputType::*;
+        match t {
+            TyUnit => ty::unit(),
+            TyHole => ty::hole(),
+            TyVar(x) => ty::var(self.find(Type, x)),
+            TyArrow(from, to) => {
+                ty::arr(self.rename_type(*from), self.rename_type(*to))
+            }
+            TyForall(param, body) => ty::forall(
+                param.clone(),
+                self.with(Type, param).rename_type(*body),
+            ),
         }
     }
 
-    fn bind(&'a self, name: String) -> Var {
-        use Renamer::*;
+    fn find(&'a self, kind: Either, name: String) -> Var {
         use Var::*;
-        match self {
-            WithValue(_, ref k) if *k == name => Bound(0),
-            WithValue(prev, _) => match prev.bind(name) {
-                Bound(i) => Bound(i + 1),
+        match self.0 {
+            Some((_, k, ref n)) if k == kind && *n == name => Bound(0, name),
+            Some((prev, k, _)) if k == kind => match prev.find(kind, name) {
+                Bound(i, s) => Bound(i + 1, s),
                 free => free,
             },
-            WithType(prev, _) => prev.bind(name),
-            Empty => Free(name),
+            Some((prev, _, _)) => prev.find(kind, name),
+            None => Free(name),
         }
     }
 
-    fn add_value(&'a self, new_key: String) -> Self {
-        Self::WithValue(self, new_key)
-    }
-
-    fn add_type(&'a self, new_type: String) -> Self {
-        Self::WithType(self, new_type)
+    fn with(&'a self, kind: Either, name: String) -> Self {
+        Self(Some((self, kind, name)))
     }
 }
 
 pub mod de {
     use super::{
-        DeBruijnTerm::{self, *},
+        Term::{self, *},
         Type, Var,
     };
 
-    pub fn unit() -> DeBruijnTerm {
+    pub fn unit() -> Term {
         TmUnit
     }
 
-    pub fn abs(r#type: Type, body: DeBruijnTerm) -> DeBruijnTerm {
-        TmAbs(r#type, Box::new(body))
+    pub fn abs(param: impl Into<String>, r#type: Type, body: Term) -> Term {
+        TmAbs(param.into(), r#type, Box::new(body))
     }
 
-    pub fn app(f: DeBruijnTerm, x: DeBruijnTerm) -> DeBruijnTerm {
+    pub fn app(f: Term, x: Term) -> Term {
         TmApp(Box::new(f), Box::new(x))
     }
 
-    pub fn var(key: impl Into<Var>) -> DeBruijnTerm {
+    pub fn var(key: impl Into<Var>) -> Term {
         TmVar(key.into())
     }
 
-    pub fn ty_abs(body: DeBruijnTerm) -> DeBruijnTerm {
-        TmTyAbs(Box::new(body))
+    pub fn ty_abs(param: impl Into<String>, body: Term) -> Term {
+        TmTyAbs(param.into(), Box::new(body))
     }
 
-    pub fn ty_app(f: DeBruijnTerm, ty: Type) -> DeBruijnTerm {
+    pub fn ty_app(f: Term, ty: Type) -> Term {
         TmTyApp(Box::new(f), ty)
     }
 
@@ -157,8 +144,8 @@ pub mod de {
             Type::TyArrow(Box::new(from), Box::new(to))
         }
 
-        pub fn forall(of: Type) -> Type {
-            Type::TyForall(Box::new(of))
+        pub fn forall(param: impl Into<String>, of: Type) -> Type {
+            Type::TyForall(param.into(), Box::new(of))
         }
     }
 }
@@ -169,9 +156,12 @@ impl From<String> for Var {
     }
 }
 
-impl From<usize> for Var {
-    fn from(depth: usize) -> Self {
-        Self::Bound(depth)
+impl<S> From<(usize, S)> for Var
+where
+    S: Into<String>,
+{
+    fn from((depth, name): (usize, S)) -> Self {
+        Self::Bound(depth, name.into())
     }
 }
 
@@ -180,18 +170,21 @@ mod tests {
     use crate::{
         bruijn::{
             de::{self, ty},
-            de_bruijn, DeBruijnTerm,
+            de_bruijn, Term,
         },
         parser::parse,
     };
 
-    fn de_parsed(input: &str) -> DeBruijnTerm {
+    fn de_parsed(input: &str) -> Term {
         de_bruijn(parse(input).unwrap())
     }
 
     #[test]
     fn triv() {
-        assert_eq!(de_parsed(r"\x:().x"), de::abs(ty::unit(), de::var(0)));
+        assert_eq!(
+            de_parsed(r"\x:().x"),
+            de::abs("x", ty::unit(), de::var((0, "x")))
+        );
     }
 
     #[test]
@@ -199,10 +192,15 @@ mod tests {
         assert_eq!(
             de_parsed(r"\y:(). (\x:(). \y:(). x) y"),
             de::abs(
+                "y",
                 ty::unit(),
                 de::app(
-                    de::abs(ty::unit(), de::abs(ty::unit(), de::var(1))),
-                    de::var(0)
+                    de::abs(
+                        "x",
+                        ty::unit(),
+                        de::abs("y", ty::unit(), de::var((1, "x")))
+                    ),
+                    de::var((0, "y"))
                 )
             )
         );

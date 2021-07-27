@@ -1,12 +1,13 @@
 use std::{error::Error, fs::File, io};
 
-use rustyline::{Editor, error::ReadlineError};
+use rustyline::{error::ReadlineError, Editor};
 use thiserror::Error;
 
 use crate::{
-    bruijn::{de_bruijn, DeBruijnTerm},
+    bruijn::{de_bruijn, Term},
     eval::eval,
     parser::parse,
+    pprint::pprint,
     typeck::typeck,
 };
 
@@ -30,16 +31,14 @@ pub fn repl() -> Result<(), HistoryError> {
             println!("This entry will not appear in history.");
         }
         match process_line(&line) {
-            Ok(term) => println!("{:?}", term),
+            Ok(term) => println!("{}", pprint(term)),
             Err(err) => eprintln!("{}", err),
         }
     }
     Ok(editor.append_history(HISTORY_FILE)?)
 }
 
-fn process_line<'a>(
-    line: &'a str,
-) -> Result<DeBruijnTerm, Box<dyn Error + 'a>> {
+fn process_line<'a>(line: &'a str) -> Result<Term, Box<dyn Error + 'a>> {
     let term = de_bruijn(parse(line)?);
     typeck(term.clone())?;
     Ok(eval(term))

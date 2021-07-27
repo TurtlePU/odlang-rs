@@ -1,7 +1,4 @@
-use crate::{
-    bruijn::{de::ty, DeBruijnTerm, Type},
-    var::Var,
-};
+use crate::bruijn::{de::ty, Term, Type, Var};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -14,7 +11,7 @@ pub enum TypeckError {
     NotEqual(Type, Type),
 }
 
-pub fn typeck(term: DeBruijnTerm) -> Result<Type, TypeckError> {
+pub fn typeck(term: Term) -> Result<Type, TypeckError> {
     Typeck::default().typeck(term)
 }
 
@@ -22,21 +19,21 @@ pub fn typeck(term: DeBruijnTerm) -> Result<Type, TypeckError> {
 struct Typeck(Vec<Type>);
 
 impl Typeck {
-    fn typeck(&mut self, term: DeBruijnTerm) -> Result<Type, TypeckError> {
-        use DeBruijnTerm::*;
+    fn typeck(&mut self, term: Term) -> Result<Type, TypeckError> {
+        use Term::*;
         use Var::*;
         match term {
             TmUnit => Ok(ty::unit()),
             TmVar(Free(_)) => Ok(ty::hole()),
-            TmVar(Bound(i)) => Ok(self.get(i)),
-            TmAbs(t, y) => {
+            TmVar(Bound(i, _)) => Ok(self.get(i)),
+            TmAbs(_, t, y) => {
                 self.0.push(t.clone());
                 let ytype = self.typeck(*y)?;
                 self.0.pop();
                 Ok(ty::arr(t, ytype))
             }
             TmApp(f, x) => assert_app(self.typeck(*f)?, self.typeck(*x)?),
-            TmTyAbs(x) => self.typeck(*x).map(ty::forall),
+            TmTyAbs(n, x) => Ok(ty::forall(n, self.typeck(*x)?)),
             TmTyApp(f, t) => assert_ty_app(self.typeck(*f)?, t),
         }
     }
@@ -60,34 +57,33 @@ fn assert_ty_app(fun: Type, arg: Type) -> Result<Type, TypeckError> {
     use Type::*;
     use TypeckError::*;
     match fun {
-        TyForall(inner) => Ok(unshift_type(subst_type(*inner, shift_type(arg, 0), 0), 0)),
+        TyForall(_, inner) => {
+            Ok(unshift_type(subst_type(*inner, shift_type(arg, 0), 0), 0))
+        }
         _ => Err(NotAForall(fun.clone())),
     }
 }
 
 pub fn shift_type(body: Type, thr: usize) -> Type {
-    use Type::*;
-    use Var::*;
-    match body {
-        TyUnit => ty::unit(),
-        TyHole => ty::hole(),
-        TyVar(Bound(i)) if i >= thr => ty::var(i + 1),
-        TyVar(free) => ty::var(free),
-        TyArrow(from, to) => ty::arr(shift_type(*from, thr), shift_type(*to, thr)),
-        TyForall(x) => ty::forall(shift_type(*x, thr + 1)),
-    }
+    do_shift(body, thr, &|i| i + 1)
 }
 
 pub fn unshift_type(body: Type, thr: usize) -> Type {
+    do_shift(body, thr, &|i| i - 1)
+}
+
+fn do_shift(body: Type, thr: usize, act: &impl Fn(usize) -> usize) -> Type {
     use Type::*;
     use Var::*;
     match body {
         TyUnit => ty::unit(),
         TyHole => ty::hole(),
-        TyVar(Bound(i)) if i >= thr => ty::var(i - 1),
-        TyVar(free) => ty::var(free),
-        TyArrow(from, to) => ty::arr(unshift_type(*from, thr), unshift_type(*to, thr)),
-        TyForall(x) => ty::forall(unshift_type(*x, thr + 1)),
+        TyVar(Bound(i, n)) if i >= thr => ty::var((act(i), n)),
+        TyVar(other) => ty::var(other),
+        TyArrow(f, t) => {
+            ty::arr(do_shift(*f, thr, act), do_shift(*t, thr, act))
+        },
+        TyForall(n, x) => ty::forall(n, do_shift(*x, thr + 1, act)),
     }
 }
 
@@ -97,13 +93,13 @@ pub fn subst_type(body: Type, with: Type, depth: usize) -> Type {
     match body {
         TyUnit => ty::unit(),
         TyHole => ty::hole(),
-        TyVar(Bound(i)) if i == depth => with,
+        TyVar(Bound(i, _)) if i == depth => do_shift(with, 0, &|i| i + depth),
         TyVar(other) => ty::var(other),
         TyArrow(from, to) => ty::arr(
             subst_type(*from, with.clone(), depth),
-            subst_type(*to, with.clone(), depth),
+            subst_type(*to, with, depth),
         ),
-        TyForall(x) => ty::forall(subst_type(*x, with, depth + 1)),
+        TyForall(n, x) => ty::forall(n, subst_type(*x, with, depth + 1)),
     }
 }
 
@@ -115,7 +111,7 @@ mod tests {
     #[test]
     fn simple_typeck() {
         assert_eq!(
-            typeck(de::abs(ty::unit(), de::var(0))),
+            typeck(de::abs("", ty::unit(), de::var((0, "")))),
             Ok(ty::arr(ty::unit(), ty::unit()))
         );
     }
