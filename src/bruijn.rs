@@ -1,22 +1,28 @@
+use std::rc::Rc;
+
 use crate::parser::{InputTerm, InputType};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Term {
-    TmUnit,
-    TmVar(Var),
-    TmAbs(String, Type, Box<Term>),
-    TmApp(Box<Term>, Box<Term>),
-    TmTyAbs(String, Box<Term>),
-    TmTyApp(Box<Term>, Type),
-}
+pub type Term = Rc<TermData>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Type {
+pub enum TermData {
+    TmUnit,
+    TmVar(Var),
+    TmAbs(String, Type, Term),
+    TmApp(Term, Term),
+    TmTyAbs(String, Term),
+    TmTyApp(Term, Type),
+}
+
+pub type Type = Rc<TypeData>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypeData {
     TyUnit,
     TyHole,
     TyVar(Var),
-    TyArrow(Box<Type>, Box<Type>),
-    TyForall(String, Box<Type>),
+    TyArrow(Type, Type),
+    TyForall(String, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -96,56 +102,57 @@ impl<'a> Context<'a> {
 }
 
 pub mod de {
-    use super::{
-        Term::{self, *},
-        Type, Var,
-    };
+    use super::{Term, TermData::*, Type, Var};
 
     pub fn unit() -> Term {
-        TmUnit
+        TmUnit.into()
     }
 
-    pub fn abs(param: impl Into<String>, r#type: Type, body: Term) -> Term {
-        TmAbs(param.into(), r#type, Box::new(body))
+    pub fn abs(
+        param: impl Into<String>,
+        r#type: impl Into<Type>,
+        body: impl Into<Term>,
+    ) -> Term {
+        TmAbs(param.into(), r#type.into(), body.into()).into()
     }
 
-    pub fn app(f: Term, x: Term) -> Term {
-        TmApp(Box::new(f), Box::new(x))
+    pub fn app(f: impl Into<Term>, x: impl Into<Term>) -> Term {
+        TmApp(f.into(), x.into()).into()
     }
 
     pub fn var(key: impl Into<Var>) -> Term {
-        TmVar(key.into())
+        TmVar(key.into()).into()
     }
 
-    pub fn ty_abs(param: impl Into<String>, body: Term) -> Term {
-        TmTyAbs(param.into(), Box::new(body))
+    pub fn ty_abs(param: impl Into<String>, body: impl Into<Term>) -> Term {
+        TmTyAbs(param.into(), body.into()).into()
     }
 
-    pub fn ty_app(f: Term, ty: Type) -> Term {
-        TmTyApp(Box::new(f), ty)
+    pub fn ty_app(f: impl Into<Term>, ty: impl Into<Type>) -> Term {
+        TmTyApp(f.into(), ty.into()).into()
     }
 
     pub mod ty {
-        use super::{Type, Var};
+        use crate::bruijn::{Type, TypeData::*, Var};
 
         pub fn unit() -> Type {
-            Type::TyUnit
+            TyUnit.into()
         }
 
         pub fn hole() -> Type {
-            Type::TyHole
+            TyHole.into()
         }
 
         pub fn var(key: impl Into<Var>) -> Type {
-            Type::TyVar(key.into())
+            TyVar(key.into()).into()
         }
 
-        pub fn arr(from: Type, to: Type) -> Type {
-            Type::TyArrow(Box::new(from), Box::new(to))
+        pub fn arr(from: impl Into<Type>, to: impl Into<Type>) -> Type {
+            TyArrow(from.into(), to.into()).into()
         }
 
-        pub fn forall(param: impl Into<String>, of: Type) -> Type {
-            Type::TyForall(param.into(), Box::new(of))
+        pub fn forall(param: impl Into<String>, of: impl Into<Type>) -> Type {
+            TyForall(param.into(), of.into()).into()
         }
     }
 }

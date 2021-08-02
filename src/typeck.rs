@@ -1,4 +1,4 @@
-use crate::bruijn::{de::ty, Term, Type, Var};
+use crate::bruijn::{de::ty, Term, TermData::*, Type, TypeData::*, Var};
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -20,21 +20,20 @@ struct Typeck(Vec<Type>);
 
 impl Typeck {
     fn typeck(&mut self, term: Term) -> Result<Type, TypeckError> {
-        use Term::*;
         use Var::*;
-        match term {
+        match (*term).clone() {
             TmUnit => Ok(ty::unit()),
             TmVar(Free(_)) => Ok(ty::hole()),
             TmVar(Bound(i, _)) => Ok(self.get(i)),
             TmAbs(_, t, y) => {
                 self.0.push(t.clone());
-                let ytype = self.typeck(*y)?;
+                let ytype = self.typeck(y)?;
                 self.0.pop();
                 Ok(ty::arr(t, ytype))
             }
-            TmApp(f, x) => assert_app(self.typeck(*f)?, self.typeck(*x)?),
-            TmTyAbs(n, x) => Ok(ty::forall(n, self.typeck(*x)?)),
-            TmTyApp(f, t) => assert_ty_app(self.typeck(*f)?, t),
+            TmApp(f, x) => assert_app(self.typeck(f)?, self.typeck(x)?),
+            TmTyAbs(n, x) => Ok(ty::forall(n, self.typeck(x)?)),
+            TmTyApp(f, t) => assert_ty_app(self.typeck(f)?, t),
         }
     }
 
@@ -44,21 +43,19 @@ impl Typeck {
 }
 
 fn assert_app(fun: Type, arg: Type) -> Result<Type, TypeckError> {
-    use Type::*;
     use TypeckError::*;
-    match fun {
-        TyArrow(from, to) if *from == arg => Ok((*to).clone()),
-        TyArrow(from, _) => Err(NotEqual((*from).clone(), arg.clone())),
+    match (*fun).clone() {
+        TyArrow(from, to) if from == arg => Ok(to.clone()),
+        TyArrow(from, _) => Err(NotEqual(from.clone(), arg.clone())),
         _ => Err(NotAFunction(fun.clone())),
     }
 }
 
 fn assert_ty_app(fun: Type, arg: Type) -> Result<Type, TypeckError> {
-    use Type::*;
     use TypeckError::*;
-    match fun {
+    match (*fun).clone() {
         TyForall(_, inner) => {
-            Ok(unshift_type(subst_type(*inner, shift_type(arg, 0), 0), 0))
+            Ok(unshift_type(subst_type(inner, shift_type(arg, 0), 0), 0))
         }
         _ => Err(NotAForall(fun.clone())),
     }
@@ -73,33 +70,31 @@ pub fn unshift_type(body: Type, thr: usize) -> Type {
 }
 
 fn do_shift(body: Type, thr: usize, act: &impl Fn(usize) -> usize) -> Type {
-    use Type::*;
     use Var::*;
-    match body {
+    match (*body).clone() {
         TyUnit => ty::unit(),
         TyHole => ty::hole(),
         TyVar(Bound(i, n)) if i >= thr => ty::var((act(i), n)),
         TyVar(other) => ty::var(other),
         TyArrow(f, t) => {
-            ty::arr(do_shift(*f, thr, act), do_shift(*t, thr, act))
+            ty::arr(do_shift(f, thr, act), do_shift(t, thr, act))
         },
-        TyForall(n, x) => ty::forall(n, do_shift(*x, thr + 1, act)),
+        TyForall(n, x) => ty::forall(n, do_shift(x, thr + 1, act)),
     }
 }
 
 pub fn subst_type(body: Type, with: Type, depth: usize) -> Type {
-    use Type::*;
     use Var::*;
-    match body {
+    match (*body).clone() {
         TyUnit => ty::unit(),
         TyHole => ty::hole(),
         TyVar(Bound(i, _)) if i == depth => do_shift(with, 0, &|i| i + depth),
         TyVar(other) => ty::var(other),
         TyArrow(from, to) => ty::arr(
-            subst_type(*from, with.clone(), depth),
-            subst_type(*to, with, depth),
+            subst_type(from, with.clone(), depth),
+            subst_type(to, with, depth),
         ),
-        TyForall(n, x) => ty::forall(n, subst_type(*x, with, depth + 1)),
+        TyForall(n, x) => ty::forall(n, subst_type(x, with, depth + 1)),
     }
 }
 
