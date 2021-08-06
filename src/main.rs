@@ -1,4 +1,4 @@
-mod bruijn;
+mod intern;
 mod typeck;
 mod eval;
 mod repl;

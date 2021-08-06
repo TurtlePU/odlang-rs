@@ -4,8 +4,8 @@ use rustyline::{error::ReadlineError, Editor};
 use thiserror::Error;
 
 use crate::{
-    bruijn::{de_bruijn, Term},
     eval::eval,
+    intern::{Context, Term},
     parser::parse,
     pprint::pprint,
     typeck::typeck,
@@ -26,20 +26,28 @@ pub fn repl() -> Result<(), HistoryError> {
     if let Err(_) = editor.load_history(HISTORY_FILE) {
         File::create(HISTORY_FILE)?;
     }
+    let mut interner = Context::default();
     while let Ok(line) = editor.readline("turtle > ") {
         if !editor.add_history_entry(&line) {
             println!("This entry will not appear in history.");
         }
-        match process_line(&line) {
-            Ok(term) => println!("{}", pprint(term)),
+        match process_line(&mut interner, &line) {
+            Ok(term) => println!("{}", pprint(&interner, term)),
             Err(err) => eprintln!("{}", err),
         }
     }
     Ok(editor.append_history(HISTORY_FILE)?)
 }
 
-fn process_line<'a>(line: &'a str) -> Result<Term, Box<dyn Error + 'a>> {
-    let term = de_bruijn(parse(line)?);
-    typeck(term.clone())?;
-    Ok(eval(term))
+fn process_line<'a>(
+    interner: &mut Context,
+    line: &'a str,
+) -> Result<Term, Box<dyn Error + 'a>> {
+    let term = interner.rename_term(parse(line)?);
+    let result = typeck(term.clone());
+    if result.errors.is_empty() {
+        Ok(eval(term))
+    } else {
+        Err(result.into())
+    }
 }
