@@ -7,7 +7,7 @@ use crate::{
     eval::eval,
     intern::{Context, Term},
     parser::parse,
-    pprint::pprint,
+    pprint::{pprint, pprint_errors},
     typeck::typeck,
 };
 
@@ -26,13 +26,13 @@ pub fn repl() -> Result<(), HistoryError> {
     if let Err(_) = editor.load_history(HISTORY_FILE) {
         File::create(HISTORY_FILE)?;
     }
-    let mut interner = Context::default();
+    let mut context = Context::default();
     while let Ok(line) = editor.readline("turtle > ") {
         if !editor.add_history_entry(&line) {
             println!("This entry will not appear in history.");
         }
-        match process_line(&mut interner, &line) {
-            Ok(term) => println!("{}", pprint(&interner, term)),
+        match process_line(&mut context, &line) {
+            Ok(term) => println!("{}", pprint(&context, term)),
             Err(err) => eprintln!("{}", err),
         }
     }
@@ -40,14 +40,14 @@ pub fn repl() -> Result<(), HistoryError> {
 }
 
 fn process_line<'a>(
-    interner: &mut Context,
+    context: &mut Context,
     line: &'a str,
 ) -> Result<Term, Box<dyn Error + 'a>> {
-    let term = interner.rename_term(parse(line)?);
+    let term = context.rename_term(parse(line)?);
     let result = typeck(term.clone());
-    if result.errors.is_empty() {
+    if result.1.is_empty() {
         Ok(eval(term))
     } else {
-        Err(result.into())
+        Err(pprint_errors(context, result.1).into())
     }
 }

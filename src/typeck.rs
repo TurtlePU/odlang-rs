@@ -1,51 +1,41 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, ops::Add};
 
 use crate::intern::{de::ty, Term, TermData::*, Type, TypeData::*, Var};
-use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TypeckError {
-    #[error("Not a function: '{0:?}'")]
     NotAFunction(Type),
-    #[error("Not a type abstraction: '{0:?}'")]
     NotAForall(Type),
-    #[error("Types must be equal: '{0:?}', '{1:?}'")]
     NotEqual(Type, Type),
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
-pub struct TypeckResult {
-    pub ty: Type,
-    pub errors: Vec<TypeckError>,
-}
+#[derive(Debug, PartialEq, Eq)]
+pub struct TypeckResult<T = Type>(pub T, pub Vec<TypeckError>);
 
-impl From<Type> for TypeckResult {
-    fn from(ty: Type) -> Self {
-        Self { ty, errors: vec![] }
+impl<T> From<T> for TypeckResult<T> {
+    fn from(value: T) -> Self {
+        Self(value, vec![])
     }
 }
 
-impl Display for TypeckResult {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}\n", &self.ty)?;
-        for err in &self.errors {
-            write!(f, "{}\n", err)?;
-        }
-        Ok(())
-    }
-}
-
-impl TypeckResult {
-    fn map(mut self, f: impl FnOnce(Type) -> Type) -> Self {
-        self.ty = f(self.ty);
-        self
+impl<T> TypeckResult<T> {
+    fn map<U>(self, f: impl FnOnce(T) -> U) -> TypeckResult<U> {
+        TypeckResult(f(self.0), self.1)
     }
 
-    fn then(self, f: impl FnOnce(Type) -> Self) -> Self {
-        let Self { ty, mut errors } = self;
-        let Self { ty, errors: mut new_errors } = f(ty);
+    fn then<U>(self, f: impl FnOnce(T) -> TypeckResult<U>) -> TypeckResult<U> {
+        let TypeckResult(x, mut errors) = self;
+        let TypeckResult(x, mut new_errors) = f(x);
         errors.append(&mut new_errors);
-        Self { ty, errors }
+        TypeckResult(x, errors)
+    }
+}
+
+impl<T, U> Add<TypeckResult<U>> for TypeckResult<T> {
+    type Output = TypeckResult<(T, U)>;
+
+    fn add(self, rhs: TypeckResult<U>) -> Self::Output {
+        self.then(|x| rhs.map(|y| (x, y)))
     }
 }
 
@@ -61,8 +51,12 @@ impl Typeck {
         match (*term).clone() {
             TmUnit => ty::unit().into(),
             TmVar(v) => self.get(v).into(),
-            TmAbs(v, t, y) => self.insert(v, t.clone()).typeck(y).map(|y| ty::arr(t, y)),
-            TmApp(f, x) => self.typeck(f).then(|f| self.typeck(x).then(|x| assert_app(f, x))),
+            TmAbs(v, t, y) => {
+                self.insert(v, t.clone()).typeck(y).map(|y| ty::arr(t, y))
+            },
+            TmApp(f, x) => (self.typeck(f) + self.typeck(x)).then(|(f, x)| {
+                assert_app(f, x)
+            }),
             TmTyAbs(n, x) => self.typeck(x).map(|x| ty::forall(n, x)),
             TmTyApp(f, t) => self.typeck(f).then(|f| assert_ty_app(f, t)),
         }
@@ -82,14 +76,8 @@ fn assert_app(fun: Type, arg: Type) -> TypeckResult {
     use TypeckError::*;
     match (*fun).clone() {
         TyArrow(from, to) if from == arg => to.into(),
-        TyArrow(from, to) => TypeckResult {
-            ty: to,
-            errors: vec![NotEqual(from, arg)],
-        },
-        _ => TypeckResult {
-            ty: ty::hole(),
-            errors: vec![NotAFunction(fun)],
-        },
+        TyArrow(from, to) => TypeckResult(to, vec![NotEqual(from, arg)]),
+        _ => TypeckResult(ty::hole(), vec![NotAFunction(fun)]),
     }
 }
 
@@ -97,10 +85,7 @@ fn assert_ty_app(fun: Type, arg: Type) -> TypeckResult {
     use TypeckError::*;
     match (*fun).clone() {
         TyForall(var, inner) => subst_type(inner, arg, var).into(),
-        _ => TypeckResult {
-            ty: ty::hole(),
-            errors: vec![NotAForall(fun)],
-        },
+        _ => TypeckResult(ty::hole(), vec![NotAForall(fun)]),
     }
 }
 
