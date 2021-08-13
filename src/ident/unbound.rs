@@ -1,7 +1,7 @@
 use std::{collections::HashSet, error::Error, fmt::Display};
 
-#[derive(Debug, Default)]
-pub struct Unbound(HashSet<String>);
+#[derive(Debug)]
+pub struct Unbound(pub HashSet<String>);
 
 impl Error for Unbound {}
 
@@ -11,15 +11,5 @@ impl Display for Unbound {
             writeln!(f, "Unbound name: {}", name)?;
         }
         Ok(())
-    }
-}
-
-impl Unbound {
-    pub fn report(&mut self, unbound: String) {
-        self.0.insert(unbound);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 }

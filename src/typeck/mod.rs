@@ -1,5 +1,4 @@
 mod error;
-mod result;
 mod state;
 
 use crate::{atoms::*, syntax::*};

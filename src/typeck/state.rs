@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{atoms::*, syntax::*};
+use crate::{atoms::*, multi_result::MultiResult, syntax::*};
 
-use super::{error::TypeckError::*, result::TypeckResult, subst_type};
+use super::{error::*, subst_type};
 
 pub struct Typeck(HashMap<Var, Type>, AlphaGen);
 
@@ -54,5 +54,13 @@ impl Typeck {
 
     fn next_hole(&mut self) -> Type {
         ty::hole(self.1.next())
+    }
+}
+
+pub type TypeckResult = MultiResult<Type, Vec<TypeckError>>;
+
+impl TypeckResult {
+    fn new(result: Type, error: TypeckError) -> Self {
+        Self { result, errors: vec![error] }
     }
 }

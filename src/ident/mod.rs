@@ -14,9 +14,10 @@ pub type IdResult = Result<(Term, Names, AlphaGen), Unbound>;
 
 pub fn identify(term: InputTerm) -> IdResult {
     let mut ctx = Context::default();
-    let term = ctx.rename_term(term);
-    let (names, alpha) = ctx.terminate()?;
-    Ok((term, names, alpha))
+    let res: Result<_, _> = ctx.rename_term(term).into();
+    let Context { names, alpha, stack } = ctx;
+    assert!(stack.is_empty());
+    Ok((res.map_err(Unbound)?, names, alpha))
 }
 
 #[cfg(test)]

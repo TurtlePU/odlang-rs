@@ -2,6 +2,8 @@ use itertools::Itertools;
 
 use crate::{atoms::{Named, Names}, syntax::Type};
 
+pub use TypeckError::*;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeckError {
     NotAFunction(Type),
