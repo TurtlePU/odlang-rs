@@ -6,9 +6,9 @@ use thiserror::Error;
 use crate::{
     eval::eval,
     ident::identify,
-    names::Named,
+    atoms::Named,
     parser::parse,
-    typeck::{typeck, TypeckResult},
+    typeck::typeck,
 };
 
 const HISTORY_FILE: &'static str = ".odlang_history";
@@ -42,10 +42,8 @@ fn process_line<'a>(
     line: &'a str,
 ) -> Result<String, Box<dyn Error + 'a>> {
     let (term, names, alpha) = identify(parse(line)?)?;
-    let TypeckResult(_, result) = typeck(alpha, term.clone());
-    if result.is_empty() {
-        Ok(eval(term).pprint(&names))
-    } else {
-        Err(result.pprint(&names).into())
+    match typeck(alpha, term.clone()) {
+        Ok(_) => Ok(eval(term).pprint(&names)),
+        Err(err) => Err(err.pprint(&names).into()),
     }
 }

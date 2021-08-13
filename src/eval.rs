@@ -1,4 +1,4 @@
-use crate::{term::{de, Term, TermData::*, Type}, names::Var, typeck};
+use crate::{syntax::*, atoms::Var, typeck};
 
 pub fn eval(term: Term) -> Term {
     match (*term).clone() {
