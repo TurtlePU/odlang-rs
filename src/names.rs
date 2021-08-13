@@ -6,6 +6,10 @@ pub struct Names(Vec<String>);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Var(usize);
 
+pub trait Named {
+    fn pprint(&self, names: &Names) -> String;
+}
+
 impl From<usize> for Var {
     fn from(id: usize) -> Self {
         Self(id)

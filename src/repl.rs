@@ -5,10 +5,9 @@ use thiserror::Error;
 
 use crate::{
     eval::eval,
-    ident::{identify, Term},
-    names::Names,
+    ident::identify,
+    names::Named,
     parser::parse,
-    pprint::{pprint, pprint_errors},
     typeck::{typeck, TypeckResult},
 };
 
@@ -32,7 +31,7 @@ pub fn repl() -> Result<(), HistoryError> {
             println!("This entry will not appear in history.");
         }
         match process_line(&line) {
-            Ok((term, names)) => println!("{}", pprint(&names, term)),
+            Ok(line) => println!("{}", line),
             Err(err) => eprintln!("{}", err),
         }
     }
@@ -41,12 +40,12 @@ pub fn repl() -> Result<(), HistoryError> {
 
 fn process_line<'a>(
     line: &'a str,
-) -> Result<(Term, Names), Box<dyn Error + 'a>> {
+) -> Result<String, Box<dyn Error + 'a>> {
     let (term, names, alpha) = identify(parse(line)?)?;
     let TypeckResult(_, result) = typeck(alpha, term.clone());
     if result.is_empty() {
-        Ok((eval(term), names))
+        Ok(eval(term).pprint(&names))
     } else {
-        Err(pprint_errors(&names, result).into())
+        Err(result.pprint(&names).into())
     }
 }

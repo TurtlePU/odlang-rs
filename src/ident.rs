@@ -1,33 +1,17 @@
-use std::{collections::{HashMap, HashSet}, error::Error, fmt::{Display, Formatter}, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    fmt::{Display, Formatter},
+};
 
-use crate::{names::{Names, Var}, parser::{
-    InputTerm::{self, *},
-    InputType::{self, *},
-}};
-
-pub type Term = Rc<TermData>;
-pub type Type = Rc<TypeData>;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TermData {
-    TmUnit,
-    TmVar(Var),
-    TmAbs(Var, Type, Term),
-    TmApp(Term, Term),
-    TmTyAbs(Var, Term),
-    TmTyApp(Term, Type),
-    TmError(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TypeData {
-    TyUnit,
-    TyAlpha(Alpha),
-    TyVar(Var),
-    TyArrow(Type, Type),
-    TyForall(Var, Type),
-    TyError(String),
-}
+use crate::{
+    names::{Names, Var},
+    parser::{
+        InputTerm::{self, *},
+        InputType::{self, *},
+    },
+    term::{de, Term, Type},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Alpha(usize);
@@ -117,8 +101,9 @@ impl Context {
             TmAbs(x, t, y) => self.rename_arrow(x, |sel, var| {
                 de::abs(var, sel.rename_type(t), sel.rename_term(*y))
             }),
-            TmTyAbs(t, x) => self
-                .rename_arrow(t, |sel, var| de::ty_abs(var, sel.rename_term(*x))),
+            TmTyAbs(t, x) => self.rename_arrow(t, |sel, var| {
+                de::ty_abs(var, sel.rename_term(*x))
+            }),
             TmTyApp(f, x) => {
                 de::ty_app(self.rename_term(*f), self.rename_type(x))
             }
@@ -179,70 +164,6 @@ impl Context {
             Ok((names, alpha))
         } else {
             Err(unbound)
-        }
-    }
-}
-
-pub mod de {
-    use super::{Term, TermData::*, Type, Var};
-
-    pub fn unit() -> Term {
-        TmUnit.into()
-    }
-
-    pub fn abs(
-        param: impl Into<Var>,
-        r#type: impl Into<Type>,
-        body: impl Into<Term>,
-    ) -> Term {
-        TmAbs(param.into(), r#type.into(), body.into()).into()
-    }
-
-    pub fn app(f: impl Into<Term>, x: impl Into<Term>) -> Term {
-        TmApp(f.into(), x.into()).into()
-    }
-
-    pub fn var(key: impl Into<Var>) -> Term {
-        TmVar(key.into()).into()
-    }
-
-    pub fn ty_abs(param: impl Into<Var>, body: impl Into<Term>) -> Term {
-        TmTyAbs(param.into(), body.into()).into()
-    }
-
-    pub fn ty_app(f: impl Into<Term>, ty: impl Into<Type>) -> Term {
-        TmTyApp(f.into(), ty.into()).into()
-    }
-
-    pub fn error(name: impl Into<String>) -> Term {
-        TmError(name.into()).into()
-    }
-
-    pub mod ty {
-        use crate::ident::{Alpha, Type, TypeData::*, Var};
-
-        pub fn unit() -> Type {
-            TyUnit.into()
-        }
-
-        pub fn hole(num: impl Into<Alpha>) -> Type {
-            TyAlpha(num.into()).into()
-        }
-
-        pub fn var(key: impl Into<Var>) -> Type {
-            TyVar(key.into()).into()
-        }
-
-        pub fn arr(from: impl Into<Type>, to: impl Into<Type>) -> Type {
-            TyArrow(from.into(), to.into()).into()
-        }
-
-        pub fn forall(param: impl Into<Var>, of: impl Into<Type>) -> Type {
-            TyForall(param.into(), of.into()).into()
-        }
-
-        pub fn error(name: impl Into<String>) -> Type {
-            TyError(name.into()).into()
         }
     }
 }

@@ -5,6 +5,7 @@ mod repl;
 mod parser;
 mod pprint;
 mod names;
+mod term;
 
 fn main() {
     println!("{:?}", repl::repl());

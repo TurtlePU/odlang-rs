@@ -1,8 +1,11 @@
 use std::{collections::HashMap, ops::Add};
 
+use itertools::Itertools;
+
 use crate::{
-    ident::{de::ty, AlphaGen, Term, TermData::*, Type, TypeData::*},
-    names::Var,
+    ident::AlphaGen,
+    names::{Named, Names, Var},
+    term::{de::ty, Term, TermData::*, Type, TypeData::*},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -10,6 +13,31 @@ pub enum TypeckError {
     NotAFunction(Type),
     NotAForall(Type),
     NotEqual(Type, Type),
+}
+
+impl Named for Vec<TypeckError> {
+    fn pprint(&self, names: &Names) -> String {
+        self.iter().map(|err| err.pprint(names)).join("\n")
+    }
+}
+
+impl Named for TypeckError {
+    fn pprint(&self, names: &Names) -> String {
+        use TypeckError::*;
+        match self {
+            NotEqual(a, b) => format!(
+                "Types should be equal: '{}', '{}'",
+                a.pprint(names),
+                b.pprint(names)
+            ),
+            NotAFunction(f) => {
+                format!("Must be a function: '{}'", f.pprint(names))
+            }
+            NotAForall(f) => {
+                format!("Must be a forall: '{}'", f.pprint(names))
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -119,9 +147,12 @@ pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
 #[cfg(test)]
 mod tests {
     use super::TypeckResult;
-    use crate::ident::{
-        de::{self, ty},
-        AlphaGen, Term,
+    use crate::{
+        ident::AlphaGen,
+        term::{
+            de::{self, ty},
+            Term,
+        },
     };
 
     fn typeck(term: Term) -> TypeckResult {

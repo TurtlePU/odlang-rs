@@ -1,4 +1,4 @@
-use crate::{ident::{de, Term, TermData::*, Type}, names::Var, typeck};
+use crate::{term::{de, Term, TermData::*, Type}, names::Var, typeck};
 
 pub fn eval(term: Term) -> Term {
     match (*term).clone() {
