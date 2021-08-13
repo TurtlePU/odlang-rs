@@ -1,6 +1,9 @@
 use std::{collections::HashMap, ops::Add};
 
-use crate::intern::{de::ty, Term, TermData::*, Type, TypeData::*, Var};
+use crate::{
+    ident::{de::ty, AlphaGen, Term, TermData::*, Type, TypeData::*},
+    names::Var,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeckError {
@@ -39,74 +42,91 @@ impl<T, U> Add<TypeckResult<U>> for TypeckResult<T> {
     }
 }
 
-pub fn typeck(term: Term) -> TypeckResult {
-    Typeck::default().typeck(term)
+pub fn typeck(gen: AlphaGen, term: Term) -> TypeckResult {
+    Typeck::from(gen).typeck(term)
 }
 
-#[derive(Default)]
-struct Typeck(HashMap<Var, Type>);
+struct Typeck(HashMap<Var, Type>, AlphaGen);
+
+impl From<AlphaGen> for Typeck {
+    fn from(gen: AlphaGen) -> Self {
+        Typeck(HashMap::default(), gen)
+    }
+}
 
 impl Typeck {
     fn typeck(&mut self, term: Term) -> TypeckResult {
         match (*term).clone() {
             TmUnit => ty::unit().into(),
-            TmVar(v) => self.get(v).into(),
+            TmVar(v) => self.get(v).unwrap_or_else(|| self.next_hole()).into(),
             TmAbs(v, t, y) => {
                 self.insert(v, t.clone()).typeck(y).map(|y| ty::arr(t, y))
-            },
-            TmApp(f, x) => (self.typeck(f) + self.typeck(x)).then(|(f, x)| {
-                assert_app(f, x)
-            }),
+            }
+            TmApp(f, x) => (self.typeck(f) + self.typeck(x))
+                .then(|(f, x)| self.assert_app(f, x)),
             TmTyAbs(n, x) => self.typeck(x).map(|x| ty::forall(n, x)),
-            TmTyApp(f, t) => self.typeck(f).then(|f| assert_ty_app(f, t)),
+            TmTyApp(f, t) => self.typeck(f).then(|f| self.assert_ty_app(f, t)),
+            TmError(_) => unreachable!(),
         }
     }
 
-    fn get(&mut self, v: Var) -> Type {
-        self.0.entry(v).or_insert(ty::hole()).clone()
+    fn get(&self, v: Var) -> Option<Type> {
+        self.0.get(&v).cloned()
     }
 
     fn insert(&mut self, v: Var, t: Type) -> &mut Self {
         self.0.insert(v, t);
         self
     }
-}
 
-fn assert_app(fun: Type, arg: Type) -> TypeckResult {
-    use TypeckError::*;
-    match (*fun).clone() {
-        TyArrow(from, to) if from == arg => to.into(),
-        TyArrow(from, to) => TypeckResult(to, vec![NotEqual(from, arg)]),
-        _ => TypeckResult(ty::hole(), vec![NotAFunction(fun)]),
+    fn assert_app(&mut self, fun: Type, arg: Type) -> TypeckResult {
+        use TypeckError::*;
+        match (*fun).clone() {
+            TyArrow(from, to) if from == arg => to.into(),
+            TyArrow(from, to) => TypeckResult(to, vec![NotEqual(from, arg)]),
+            _ => TypeckResult(self.next_hole(), vec![NotAFunction(fun)]),
+        }
     }
-}
 
-fn assert_ty_app(fun: Type, arg: Type) -> TypeckResult {
-    use TypeckError::*;
-    match (*fun).clone() {
-        TyForall(var, inner) => subst_type(inner, arg, var).into(),
-        _ => TypeckResult(ty::hole(), vec![NotAForall(fun)]),
+    fn assert_ty_app(&mut self, fun: Type, arg: Type) -> TypeckResult {
+        use TypeckError::*;
+        match (*fun).clone() {
+            TyForall(var, inner) => subst_type(inner, arg, var).into(),
+            _ => TypeckResult(self.next_hole(), vec![NotAForall(fun)]),
+        }
+    }
+
+    fn next_hole(&mut self) -> Type {
+        ty::hole(self.1.next())
     }
 }
 
 pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
     match (*body).clone() {
-        TyUnit => ty::unit(),
-        TyHole => ty::hole(),
+        TyUnit => body,
+        TyAlpha(_) => body,
         TyVar(var) if var == what => with,
-        TyVar(other) => ty::var(other),
+        TyVar(_) => body,
         TyArrow(from, to) => ty::arr(
             subst_type(from, with.clone(), what),
             subst_type(to, with, what),
         ),
         TyForall(n, x) => ty::forall(n, subst_type(x, with, what)),
+        TyError(_) => unreachable!(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::typeck;
-    use crate::intern::de::{self, ty};
+    use super::TypeckResult;
+    use crate::ident::{
+        de::{self, ty},
+        AlphaGen, Term,
+    };
+
+    fn typeck(term: Term) -> TypeckResult {
+        super::typeck(AlphaGen::default(), term)
+    }
 
     #[test]
     fn simple_typeck() {

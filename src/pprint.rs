@@ -1,72 +1,87 @@
 use itertools::Itertools;
 
 use crate::{
-    intern::{Context, Term, TermData::*, Type, TypeData::*},
+    ident::{Term, TermData::*, Type, TypeData::*},
+    names::Names,
     typeck::TypeckError,
 };
 
-pub fn pprint(ctx: &Context, term: Term) -> String {
+pub fn pprint(names: &Names, term: Term) -> String {
     match (*term).clone() {
         TmUnit => "()".into(),
-        TmVar(var) => ctx.name(var),
+        TmVar(var) => names[var].clone(),
         TmAbs(n, t, y) => {
             format!(
                 "\\{}: {}. {}",
-                ctx.name(n),
-                pprint_type(ctx, t),
-                pprint(ctx, y)
+                names[n],
+                pprint_type(names, t),
+                pprint(names, y)
             )
         }
         TmApp(f, x) => match *f {
             TmAbs(_, _, _) => {
-                format!("({}) {}", pprint(ctx, f), pprint(ctx, x))
+                format!("({}) {}", pprint(names, f), pprint(names, x))
             }
-            _ => format!("{} {}", pprint(ctx, f), pprint(ctx, x)),
+            _ => format!("{} {}", pprint(names, f), pprint(names, x)),
         },
-        TmTyAbs(n, y) => format!("/\\ {}. {}", ctx.name(n), pprint(ctx, y)),
+        TmTyAbs(n, y) => format!("/\\ {}. {}", names[n], pprint(names, y)),
         TmTyApp(f, x) => match *f {
             TmTyAbs(_, _) => {
-                format!("({}) [{}]", pprint(ctx, f), pprint_type(ctx, x))
+                format!("({}) [{}]", pprint(names, f), pprint_type(names, x))
             }
-            _ => format!("{} [{}]", pprint(ctx, f), pprint_type(ctx, x)),
+            _ => format!("{} [{}]", pprint(names, f), pprint_type(names, x)),
         },
+        TmError(err) => err,
     }
 }
 
-pub fn pprint_errors(ctx: &Context, errs: Vec<TypeckError>) -> String {
-    errs.into_iter().map(|err| pprint_error(ctx, err)).join("\n")
+pub fn pprint_errors(names: &Names, errs: Vec<TypeckError>) -> String {
+    errs.into_iter()
+        .map(|err| pprint_error(names, err))
+        .join("\n")
 }
 
-fn pprint_error(ctx: &Context, err: TypeckError) -> String {
+fn pprint_error(names: &Names, err: TypeckError) -> String {
     use TypeckError::*;
     match err {
         NotEqual(a, b) => format!(
             "Types should be equal: '{}', '{}'",
-            pprint_type(ctx, a),
-            pprint_type(ctx, b)
+            pprint_type(names, a),
+            pprint_type(names, b)
         ),
         NotAFunction(f) => {
-            format!("Must be a function: '{}'", pprint_type(ctx, f))
+            format!("Must be a function: '{}'", pprint_type(names, f))
         }
-        NotAForall(f) => format!("Must be a forall: '{}'", pprint_type(ctx, f)),
+        NotAForall(f) => {
+            format!("Must be a forall: '{}'", pprint_type(names, f))
+        }
     }
 }
 
-fn pprint_type(ctx: &Context, ty: Type) -> String {
+fn pprint_type(names: &Names, ty: Type) -> String {
     match (*ty).clone() {
         TyUnit => "()".into(),
-        TyHole => "_".into(),
-        TyVar(var) => ctx.name(var),
+        TyAlpha(alp) => format!("{}", alp),
+        TyVar(var) => names[var].clone(),
         TyArrow(f, t) => match *f {
-            TyUnit | TyHole | TyVar(_) => {
-                format!("{} -> {}", pprint_type(ctx, f), pprint_type(ctx, t))
+            TyUnit | TyAlpha(_) | TyVar(_) => {
+                format!(
+                    "{} -> {}",
+                    pprint_type(names, f),
+                    pprint_type(names, t)
+                )
             }
             _ => {
-                format!("({}) -> {}", pprint_type(ctx, f), pprint_type(ctx, t))
+                format!(
+                    "({}) -> {}",
+                    pprint_type(names, f),
+                    pprint_type(names, t)
+                )
             }
         },
         TyForall(n, y) => {
-            format!("/\\ {} => {}", ctx.name(n), pprint_type(ctx, y))
+            format!("/\\ {} => {}", names[n], pprint_type(names, y))
         }
+        TyError(err) => err,
     }
 }

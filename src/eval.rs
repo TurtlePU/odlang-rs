@@ -1,7 +1,4 @@
-use crate::{
-    intern::{de, Term, TermData::*, Type, Var},
-    typeck,
-};
+use crate::{ident::{de, Term, TermData::*, Type}, names::Var, typeck};
 
 pub fn eval(term: Term) -> Term {
     match (*term).clone() {
@@ -30,6 +27,7 @@ fn subst_type(with: Type, term: Term, var: Var) -> Term {
             subst_type(with.clone(), f, var),
             typeck::subst_type(x, with, var),
         ),
+        TmError(_) => unreachable!()
     }
 }
 
@@ -44,5 +42,6 @@ fn subst(term: Term, inside: Term, what: Var) -> Term {
         }
         TmTyAbs(n, y) => de::ty_abs(n, subst(term, y, what)),
         TmTyApp(f, t) => de::ty_app(subst(term, f, what), t),
+        TmError(_) => unreachable!()
     }
 }
