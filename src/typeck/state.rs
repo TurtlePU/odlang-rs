@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{atoms::*, multi_result::MultiResult, syntax::*};
 
@@ -57,10 +57,16 @@ impl Typeck {
     }
 }
 
-pub type TypeckResult = MultiResult<Type, Vec<TypeckError>>;
+pub type TypeckResult = MultiResult<Type, (), VecDeque<TypeckError>>;
 
 impl TypeckResult {
     fn new(result: Type, error: TypeckError) -> Self {
-        Self { result, errors: vec![error] }
+        let mut errors = VecDeque::new();
+        errors.push_front(error);
+        Self {
+            result,
+            state: (),
+            errors,
+        }
     }
 }

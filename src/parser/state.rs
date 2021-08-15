@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::multi_result::MultiResult;
 
 use super::{error::ParseError, InputTerm};
@@ -18,4 +20,4 @@ impl<'a> Parser<'a> {
     }
 }
 
-type ParseResult<T> = MultiResult<T, Vec<ParseError>>;
+type ParseResult<T> = MultiResult<T, (), VecDeque<ParseError>>;

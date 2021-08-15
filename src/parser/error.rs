@@ -1,7 +1,13 @@
-use std::{error::Error, fmt::Display};
+use std::{collections::VecDeque, error::Error, fmt::Display};
 
 #[derive(Debug)]
-pub struct ParseErrors(pub Vec<ParseError>);
+pub struct ParseErrors(VecDeque<ParseError>);
+
+impl From<VecDeque<ParseError>> for ParseErrors {
+    fn from(errors: VecDeque<ParseError>) -> Self {
+        Self(errors)
+    }
+}
 
 impl Error for ParseErrors {}
 

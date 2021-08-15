@@ -74,12 +74,16 @@ impl Context {
     }
 }
 
-type CtxResult<T> = MultiResult<T, HashSet<String>>;
+type CtxResult<T> = MultiResult<T, (), HashSet<String>>;
 
 impl<T> CtxResult<T> {
     fn new(result: T, error: String) -> Self {
         let mut errors = HashSet::default();
         errors.insert(error);
-        Self { result, errors }
+        Self {
+            result,
+            state: (),
+            errors,
+        }
     }
 }

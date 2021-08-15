@@ -1,11 +1,16 @@
 mod error;
 mod state;
 
+use std::collections::VecDeque;
+
 use crate::{atoms::*, syntax::*};
 
 use self::{error::TypeckError, state::Typeck};
 
-pub fn typeck(gen: AlphaGen, term: Term) -> Result<Type, Vec<TypeckError>> {
+pub fn typeck(
+    gen: AlphaGen,
+    term: Term,
+) -> Result<Type, VecDeque<TypeckError>> {
     Typeck::from(gen).typeck(term).into()
 }
 
@@ -28,7 +33,7 @@ pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
 mod tests {
     use super::*;
 
-    fn typeck(term: Term) -> Result<Type, Vec<TypeckError>> {
+    fn typeck(term: Term) -> Result<Type, VecDeque<TypeckError>> {
         super::typeck(AlphaGen::default(), term)
     }
 

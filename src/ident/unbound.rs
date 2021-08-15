@@ -1,7 +1,13 @@
 use std::{collections::HashSet, error::Error, fmt::Display};
 
 #[derive(Debug)]
-pub struct Unbound(pub HashSet<String>);
+pub struct Unbound(HashSet<String>);
+
+impl From<HashSet<String>> for Unbound {
+    fn from(errs: HashSet<String>) -> Self {
+        Self(errs)
+    }
+}
 
 impl Error for Unbound {}
 

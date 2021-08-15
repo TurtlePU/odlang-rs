@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use itertools::Itertools;
 
 use crate::{atoms::{Named, Names}, syntax::Type};
@@ -11,7 +13,7 @@ pub enum TypeckError {
     NotEqual(Type, Type),
 }
 
-impl Named for Vec<TypeckError> {
+impl Named for VecDeque<TypeckError> {
     fn pprint(&self, names: &Names) -> String {
         self.iter().map(|err| err.pprint(names)).join("\n")
     }

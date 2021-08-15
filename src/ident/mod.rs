@@ -17,7 +17,7 @@ pub fn identify(term: InputTerm) -> IdResult {
     let res: Result<_, _> = ctx.rename_term(term).into();
     let Context { names, alpha, stack } = ctx;
     assert!(stack.is_empty());
-    Ok((res.map_err(Unbound)?, names, alpha))
+    Ok((res?, names, alpha))
 }
 
 #[cfg(test)]
