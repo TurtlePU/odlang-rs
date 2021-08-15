@@ -1,8 +1,4 @@
-use crate::{
-    atoms::{AlphaGen, Names},
-    parser::InputTerm,
-    syntax::Term,
-};
+use crate::{atoms::{AlphaGen, Names}, ident::stack::Stack, parser::InputTerm, syntax::Term};
 
 use self::{context::Context, unbound::Unbound};
 
@@ -14,9 +10,8 @@ pub type IdResult = Result<(Term, Names, AlphaGen), Unbound>;
 
 pub fn identify(term: InputTerm) -> IdResult {
     let mut ctx = Context::default();
-    let res: Result<_, _> = ctx.rename_term(term).into();
-    let Context { names, alpha, stack } = ctx;
-    assert!(stack.is_empty());
+    let res: Result<_, _> = ctx.rename_term(&Stack::default(), term).into();
+    let Context { names, alpha } = ctx;
     Ok((res?, names, alpha))
 }
 
