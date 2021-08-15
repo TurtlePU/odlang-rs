@@ -1,11 +1,18 @@
-use std::{collections::VecDeque, error::Error, fmt::Display};
+use std::{error::Error, fmt::Display};
+
+use crate::atoms::Position;
 
 #[derive(Debug)]
-pub struct ParseErrors(VecDeque<ParseError>);
+pub struct ParseErrors(Vec<ParseError>);
 
-impl From<VecDeque<ParseError>> for ParseErrors {
-    fn from(errors: VecDeque<ParseError>) -> Self {
-        Self(errors)
+pub use ParseError::*;
+
+impl<I> From<I> for ParseErrors
+where
+    I: IntoIterator<Item = ParseError>,
+{
+    fn from(errors: I) -> Self {
+        Self(errors.into_iter().collect())
     }
 }
 
@@ -21,12 +28,18 @@ impl Display for ParseErrors {
 }
 
 #[derive(Debug)]
-pub struct ParseError;
+pub enum ParseError {
+    UnknownSymbol(char, Position),
+}
 
 impl Error for ParseError {}
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        match self {
+            UnknownSymbol(c, p) => {
+                writeln!(f, "[{}]: Unknown symbol '{}'", p, c)
+            }
+        }
     }
 }
