@@ -1,38 +1,44 @@
-# Накидываю пример синтаксиса, чтобы начать пилить AST
+println : String -IO> () = _
 
-main : -{io}-> () = println "Hello world!"
+main : () -IO> () = {
+    println "Hello world!"
+}
+-- can also be written as `{ IO ~> () }` or `{ IO }`
 
 addTwo : Int -> Int =
     x -> x + 2
 
-sum : List Int -> Int =
-    [] -> 0
-    (x::xs) -> x + sum xs
+data List a e ' = Nil | Cons a { e ~'> List a e }
 
-imperative : Int -{io}-> () =
+sum : List Int ~> Int =
+    Nil -> 0
+    Cons x xs -> x + sum xs()
+
+imperative : Int -IO> () =
     0 -> println "Zero, nothing to do here"
     x ->
         let y: File = open "input.txt"
         let y' = write y `{x}`
         close y'
 
-data Optional a = Just a | Nothing
+data Maybe a = Just a | Nothing
 
-# Пишите комментарии, буду пытаться объяснять происходящее
+effect Ask =
+    ask : () -!> Int
 
-effect Ask = Ask -> Int
+with_state : s -> HandlerS s t e f -> { e + f ~> t } -f> (s, t) = ...
 
-ask_example (x: Int) * (y: Int) =
-    let list = [x, y]
-    handle
-        asks()
-    with =
-        Ask cont -> cont pop(list)
+second (x, y) = y
 
-# handle_with_ : ...
+x |> f = f x
 
-asks : -{Ask}-> Int = raise Ask + raise Ask
+ask_example (x: Int) (y: Int) = with_state [x, y] (
+    (Cons x xs, ask (), cont) -> (xs(), cont(x))
+    (Nil, _, _) -> panic()
+) asks |> second
 
-if_then_else_ : Bool * ((-> a) & (-> a)) -> a =
-    true * (f &) -> f()
-    false * (& f) -> f()
+asks = { ask() + ask() }
+
+if : Bool -> { ~> a } & { ~> a } ~> a =
+    true -> (f &) -> f()
+    false -> (& f) -> f()

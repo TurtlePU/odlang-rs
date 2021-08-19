@@ -1,0 +1,139 @@
+-- `{ e ~> t }` == `() -e> t`
+-- substructural modalities are `!`, `?`, `+`, `*`
+-- `'`, `''`, `'''`, ... are polymorphic substructural modalities
+-- `... a' ...` is a shorthand for `a' => ...`
+-- `a -e'> b` == `(a -e> b)'`
+-- implicit modalities are allowed for functions
+-- ``, `1` are uniqueness modifiers
+-- `#`, `##`, ... are polymorphic uniqueness modifiers
+
+-- prelude --
+
+with : Handler e f t -> { e + f ~> t } -f> t = ...
+-- Without substructural inference it would be
+--     `(Handler e f t)' -*> { e + f ~> t } -f'> t`
+-- TODO: type Handler
+
+id x = x
+
+($) = id
+-- `(a -e> b) -> a -e> b`
+
+swap f x y = f y x
+
+(|>) = swap ($)
+
+-- 'pure' wrapper
+
+pure : (() -> a) -> a =
+    f -> f()
+
+($$) = pure { id }
+-- `(a -> b) -> a -> b`
+
+-- do-notation --
+
+class Bind ' m =
+    (>>=) : m a -> (a -'> m b) -> m b
+
+effect Try ' m =
+    try : m t -'> t
+
+do : Bind ' m => { Try ' m ~> m t } -> m t =
+    with $ (try x, cont) -> (x >>= cont)
+
+-- Maybe --
+
+data Maybe a = Just a | Nothing
+
+instance Bind ? Maybe =
+    Just x >>= f = f x
+    Nothing >>= _ = Nothing
+
+maybe_pair (ma: Maybe a) (mb: Maybe b) = do {
+    Just (bind ma, bind mb)
+}
+
+-- Array --
+
+data Array t = ...
+
+split : Nat -> 1 Array t -> (1 Array t, 1 Array t) = ...
+
+nempty : # Array t -> Maybe (# Array t) = ...
+
+-- generators --
+
+effect Yield t =
+    yield : t -!> ()
+
+data List t e = Nil | Cons t { e ~!> List t e }
+
+generator : { Yield t + e ~> List t e } -e> List t e =
+    with $ (yield x, cont) -> Cons x cont
+
+chunks (n: Nat) (arr: 1 Array t) = generator {
+    let (chunk, tail) = split n arr
+    yield chunk
+    nempty tail |>
+        Just tail -> chunks n tail
+        Nothing -> Nil
+}
+
+-- More typeclasses
+
+class Pure ' m =
+    pure : a' -> m a
+
+class Map ' m =
+    (<$>) : (a -'> b) -> m a -> m b
+
+class Apply ' '' m =
+    (<*>): m (a -'> b) -> m a'' -> m b
+
+instance Pure + List =
+    pure x = Cons x { pure x }
+
+instance Pure ! List =
+    pure x = Cons x { Nil }
+
+instance Map * List =
+    (<$>) =
+        _ -> Nil -> Nil
+        f -> Cons x xs -> Cons f(x) { f <$> xs() }
+
+instance Apply * * List =
+    (<*>) =
+        Nil -> _ -> Nil
+        Cons f fs -> xs -> Cons (f <$> xs) { fs <*> xs }
+
+instance Apply ? ? List =
+    (<*>) =
+        Nil -> _ -> Nil
+        _ -> Nil -> Nil
+        Cons f fs -> Cons x xs -> Cons f(x) { fs <*> xs }
+
+-- Loops
+
+effMap Nil _ = Nil
+effMap (Cons x xs) f = Cons f(x) { effMap xs f }
+
+for Nil _ = ()
+for (Cons x xs) f = f(); for xs() f
+
+apply = swap for
+
+loop f = f() |>
+    Just a -> a
+    Nothing -> loop f
+
+while f = f() |>
+    true -> while f
+    false -> ()
+
+-- generators (again)
+
+flatten xs = generator {
+    for xs $ apply yield
+    Nil
+}
