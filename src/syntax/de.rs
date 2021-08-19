@@ -16,7 +16,7 @@ pub enum TermData {
     TmApp(Term, Term),
     TmTyAbs(Var, Term),
     TmTyApp(Term, Type),
-    TmError(String),
+    TmError,
 }
 
 pub fn unit() -> Term {
@@ -47,8 +47,8 @@ pub fn ty_app(f: impl Into<Term>, ty: impl Into<Type>) -> Term {
     TmTyApp(f.into(), ty.into()).into()
 }
 
-pub fn error(name: impl Into<String>) -> Term {
-    TmError(name.into()).into()
+pub fn error() -> Term {
+    TmError.into()
 }
 
 impl Named for Term {
@@ -79,7 +79,7 @@ impl Named for Term {
                     format!("{} [{}]", f.pprint(names), x.pprint(names))
                 }
             },
-            TmError(err) => err,
+            TmError => "ERROR".into(),
         }
     }
 }

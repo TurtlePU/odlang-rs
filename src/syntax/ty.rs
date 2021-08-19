@@ -13,7 +13,7 @@ pub enum TypeData {
     TyVar(Var),
     TyArrow(Type, Type),
     TyForall(Var, Type),
-    TyError(String),
+    TyError,
 }
 
 pub fn unit() -> Type {
@@ -36,8 +36,8 @@ pub fn forall(param: impl Into<Var>, of: impl Into<Type>) -> Type {
     TyForall(param.into(), of.into()).into()
 }
 
-pub fn error(name: impl Into<String>) -> Type {
-    TyError(name.into()).into()
+pub fn error() -> Type {
+    TyError.into()
 }
 
 impl Named for Type {
@@ -57,7 +57,7 @@ impl Named for Type {
             TyForall(n, y) => {
                 format!("/\\ {} => {}", names[n], y.pprint(names))
             }
-            TyError(err) => err,
+            TyError => "ERROR".into(),
         }
     }
 }

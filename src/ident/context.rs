@@ -37,6 +37,7 @@ impl Context {
             TmTyApp(f, x) => (self.rename_term(stack, *f)
                 + self.rename_type(stack, x))
             .map(|(f, x)| de::ty_app(f, x)),
+            TmError => unreachable!(),
         }
     }
 
@@ -53,7 +54,8 @@ impl Context {
                     sel.rename_type(stack, *body)
                         .map(|body| ty::forall(v, body))
                 })
-            }
+            },
+            TyError => unreachable!(),
         }
     }
 
@@ -73,11 +75,11 @@ fn rename_var<T>(
     stack: &Stack,
     name: String,
     then: impl FnOnce(Var) -> T,
-    err: impl FnOnce(String) -> T,
+    err: impl FnOnce() -> T,
 ) -> CtxResult<T> {
     match stack.map(name) {
         Ok(v) => then(v).into(),
-        Err(name) => CtxResult::err(err(name.clone()), name),
+        Err(name) => CtxResult::err(err(), name),
     }
 }
 

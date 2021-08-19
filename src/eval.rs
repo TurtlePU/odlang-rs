@@ -16,8 +16,8 @@ pub fn eval(term: Term) -> Term {
 
 fn subst_type(with: Type, term: Term, var: Var) -> Term {
     match (*term).clone() {
-        TmUnit => de::unit(),
-        TmVar(k) => de::var(k),
+        TmUnit => term,
+        TmVar(_) => term,
         TmAbs(n, ty, y) => de::abs(n, typeck::subst_type(ty, with, var), y),
         TmApp(f, x) => {
             de::app(subst_type(with.clone(), f, var), subst_type(with, x, var))
@@ -27,21 +27,21 @@ fn subst_type(with: Type, term: Term, var: Var) -> Term {
             subst_type(with.clone(), f, var),
             typeck::subst_type(x, with, var),
         ),
-        TmError(_) => unreachable!()
+        TmError => unreachable!()
     }
 }
 
-fn subst(term: Term, inside: Term, what: Var) -> Term {
+fn subst(with: Term, inside: Term, what: Var) -> Term {
     match (*inside).clone() {
-        TmUnit => de::unit(),
-        TmVar(var) if var == what => term,
-        TmVar(other) => de::var(other),
-        TmAbs(n, ty, y) => de::abs(n, ty, subst(term, y, what)),
+        TmUnit => inside,
+        TmVar(var) if var == what => with,
+        TmVar(other) => inside,
+        TmAbs(n, ty, y) => de::abs(n, ty, subst(with, y, what)),
         TmApp(f, x) => {
-            de::app(subst(term.clone(), f, what), subst(term, x, what))
+            de::app(subst(with.clone(), f, what), subst(with, x, what))
         }
-        TmTyAbs(n, y) => de::ty_abs(n, subst(term, y, what)),
-        TmTyApp(f, t) => de::ty_app(subst(term, f, what), t),
-        TmError(_) => unreachable!()
+        TmTyAbs(n, y) => de::ty_abs(n, subst(with, y, what)),
+        TmTyApp(f, t) => de::ty_app(subst(with, f, what), t),
+        TmError => unreachable!()
     }
 }

@@ -21,7 +21,7 @@ where
     E: Default,
 {
     fn from(result: T) -> Self {
-        Self::ok(result, S::default())
+        Self::ok(result, empty())
     }
 }
 

@@ -24,7 +24,7 @@ impl Typeck {
                 .then(|(f, x)| self.assert_app(f, x)),
             TmTyAbs(n, x) => self.typeck(x).map(|x| ty::forall(n, x)),
             TmTyApp(f, t) => self.typeck(f).then(|f| self.assert_ty_app(f, t)),
-            TmError(_) => unreachable!(),
+            TmError => unreachable!(),
         }
     }
 
@@ -40,15 +40,15 @@ impl Typeck {
     fn assert_app(&mut self, fun: Type, arg: Type) -> TypeckResult {
         match (*fun).clone() {
             TyArrow(from, to) if from == arg => to.into(),
-            TyArrow(from, to) => TypeckResult::new(to, NotEqual(from, arg)),
-            _ => TypeckResult::new(self.next_hole(), NotAFunction(fun)),
+            TyArrow(from, to) => TypeckResult::err(to, NotEqual(from, arg)),
+            _ => TypeckResult::err(self.next_hole(), NotAFunction(fun)),
         }
     }
 
     fn assert_ty_app(&mut self, fun: Type, arg: Type) -> TypeckResult {
         match (*fun).clone() {
             TyForall(var, inner) => subst_type(inner, arg, var).into(),
-            _ => TypeckResult::new(self.next_hole(), NotAForall(fun)),
+            _ => TypeckResult::err(self.next_hole(), NotAForall(fun)),
         }
     }
 
@@ -58,15 +58,3 @@ impl Typeck {
 }
 
 pub type TypeckResult = MultiResult<Type, (), VecDeque<TypeckError>>;
-
-impl TypeckResult {
-    fn new(result: Type, error: TypeckError) -> Self {
-        let mut errors = VecDeque::new();
-        errors.push_front(error);
-        Self {
-            result,
-            state: (),
-            errors,
-        }
-    }
-}

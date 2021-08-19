@@ -10,14 +10,15 @@ pub enum InputTerm {
     TmApp(Box<InputTerm>, Box<InputTerm>),
     TmTyAbs(String, Box<InputTerm>),
     TmTyApp(Box<InputTerm>, InputType),
+    TmError,
 }
 
 pub fn unit() -> InputTerm {
-    InputTerm::TmUnit
+    TmUnit
 }
 
 pub fn var(name: impl Into<String>) -> InputTerm {
-    InputTerm::TmVar(name.into())
+    TmVar(name.into())
 }
 
 pub fn abs(
@@ -25,17 +26,21 @@ pub fn abs(
     ty: InputType,
     body: InputTerm,
 ) -> InputTerm {
-    InputTerm::TmAbs(par.into(), ty, Box::new(body))
+    TmAbs(par.into(), ty, Box::new(body))
 }
 
 pub fn app(f: InputTerm, x: InputTerm) -> InputTerm {
-    InputTerm::TmApp(Box::new(f), Box::new(x))
+    TmApp(Box::new(f), Box::new(x))
 }
 
 pub fn tyabs(par: impl Into<String>, body: InputTerm) -> InputTerm {
-    InputTerm::TmTyAbs(par.into(), Box::new(body))
+    TmTyAbs(par.into(), Box::new(body))
 }
 
 pub fn tyapp(f: InputTerm, x: InputType) -> InputTerm {
-    InputTerm::TmTyApp(Box::new(f), x)
+    TmTyApp(Box::new(f), x)
+}
+
+pub fn err() -> InputTerm {
+    TmError
 }

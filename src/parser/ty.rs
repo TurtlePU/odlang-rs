@@ -7,24 +7,29 @@ pub enum InputType {
     TyVar(String),
     TyArrow(Box<InputType>, Box<InputType>),
     TyForall(String, Box<InputType>),
+    TyError,
 }
 
 pub fn unit() -> InputType {
-    InputType::TyUnit
+    TyUnit
 }
 
 pub fn hole() -> InputType {
-    InputType::TyHole
+    TyHole
 }
 
 pub fn var(name: impl Into<String>) -> InputType {
-    InputType::TyVar(name.into())
+    TyVar(name.into())
 }
 
 pub fn arr(from: InputType, to: InputType) -> InputType {
-    InputType::TyArrow(Box::new(from), Box::new(to))
+    TyArrow(Box::new(from), Box::new(to))
 }
 
 pub fn forall(par: impl Into<String>, body: InputType) -> InputType {
-    InputType::TyForall(par.into(), Box::new(body))
+    TyForall(par.into(), Box::new(body))
+}
+
+pub fn error() -> InputType {
+    TyError
 }

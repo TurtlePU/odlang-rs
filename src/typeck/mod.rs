@@ -25,7 +25,7 @@ pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
             subst_type(to, with, what),
         ),
         TyForall(n, x) => ty::forall(n, subst_type(x, with, what)),
-        TyError(_) => unreachable!(),
+        TyError => unreachable!(),
     }
 }
 
