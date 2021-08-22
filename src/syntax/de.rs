@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 pub use TermData::*;
 
-use crate::atoms::*;
+use crate::{atoms::*, multi_result::ErrValue};
 
 use super::Type;
 
@@ -49,6 +49,12 @@ pub fn ty_app(f: impl Into<Term>, ty: impl Into<Type>) -> Term {
 
 pub fn error() -> Term {
     TmError.into()
+}
+
+impl ErrValue for Term {
+    fn err_value() -> Self {
+        error()
+    }
 }
 
 impl Named for Term {

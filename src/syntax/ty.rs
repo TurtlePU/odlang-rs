@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 pub use TypeData::*;
 
-use crate::atoms::*;
+use crate::{atoms::*, multi_result::ErrValue};
 
 pub type Type = Rc<TypeData>;
 
@@ -38,6 +38,12 @@ pub fn forall(param: impl Into<Var>, of: impl Into<Type>) -> Type {
 
 pub fn error() -> Type {
     TyError.into()
+}
+
+impl ErrValue for Type {
+    fn err_value() -> Self {
+        error()
+    }
 }
 
 impl Named for Type {

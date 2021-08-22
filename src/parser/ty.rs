@@ -1,5 +1,7 @@
 pub use InputType::*;
 
+use crate::multi_result::ErrValue;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputType {
     TyUnit,
@@ -32,4 +34,10 @@ pub fn forall(par: impl Into<String>, body: InputType) -> InputType {
 
 pub fn error() -> InputType {
     TyError
+}
+
+impl ErrValue for InputType {
+    fn err_value() -> Self {
+        error()
+    }
 }

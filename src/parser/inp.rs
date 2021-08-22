@@ -1,3 +1,5 @@
+use crate::multi_result::ErrValue;
+
 use super::InputType;
 
 pub use InputTerm::*;
@@ -43,4 +45,10 @@ pub fn tyapp(f: InputTerm, x: InputType) -> InputTerm {
 
 pub fn err() -> InputTerm {
     TmError
+}
+
+impl ErrValue for InputTerm {
+    fn err_value() -> Self {
+        err()
+    }
 }
