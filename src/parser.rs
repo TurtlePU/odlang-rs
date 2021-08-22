@@ -1,6 +1,29 @@
-use crate::atoms::*;
+use std::{
+    collections::VecDeque,
+    error::Error,
+    fmt::Display,
+};
 
-use super::*;
+use crate::{input::*, prelude::*};
+
+use itertools::Itertools;
+
+pub fn parse(text: &str) -> Result<InputTerm, ParseErrors> {
+    let (tokens, errs): (Vec<_>, VecDeque<_>) =
+        Tokenizer::from(text).partition_result();
+    let ParseResult {
+        result,
+        state,
+        errors,
+    } = parse_term(0)(&tokens[..]);
+    assert!(state.is_empty());
+    let error = ParseErrors(errs).app(errors);
+    if error.0.is_empty() {
+        Ok(result)
+    } else {
+        Err(error)
+    }
+}
 
 pub type Token<'a> = (TokenData<'a>, Range);
 
@@ -44,6 +67,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         use ArrowKind::*;
         use ParenKind::*;
         use TokenData::*;
+        use ParseError::UnknownSymbol;
         let (pref, range) = self.take_while(|c| c == b' ');
         if pref.len() > 0 {
             return Some(Ok((Space(pref.len()), range)));
@@ -97,5 +121,51 @@ impl<'a> Tokenizer<'a> {
                 .take_while(|&c| pred(c))
                 .count()
         )
+    }
+}
+
+pub type Tokens<'a> = &'a [Token<'a>];
+
+pub type ParseResult<'a, T> = MultiResult<T, Tokens<'a>, ParseErrors>;
+
+fn parse_term(ident: usize) -> impl FnOnce(Tokens) -> ParseResult<InputTerm> {
+    move |t| todo!()
+}
+
+#[derive(Debug)]
+pub struct ParseErrors(VecDeque<ParseError>);
+
+impl Error for ParseErrors {}
+
+impl Display for ParseErrors {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for err in &self.0 {
+            writeln!(f, "{}", err)?;
+        }
+        Ok(())
+    }
+}
+
+impl Semigroup for ParseErrors {
+    fn app(self, other: Self) -> Self {
+        Self(self.0.app(other.0))
+    }
+}
+
+#[derive(Debug)]
+pub enum ParseError {
+    UnknownSymbol(char, Position),
+}
+
+impl Error for ParseError {}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ParseError::*;
+        match self {
+            UnknownSymbol(c, p) => {
+                writeln!(f, "[{}]: Unknown symbol '{}'", p, c)
+            }
+        }
     }
 }

@@ -4,8 +4,12 @@ mod eval;
 mod repl;
 mod parser;
 mod syntax;
-mod atoms;
 mod multi_result;
+mod alpha;
+mod names;
+mod prelude;
+mod input;
+mod coordinates;
 
 fn main() {
     println!("{:?}", repl::repl());

@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use itertools::Itertools;
 
-use crate::{atoms::*, multi_result::*, syntax::*};
+use crate::{prelude::*, syntax::*};
 
 pub fn typeck(gen: AlphaGen, term: Term) -> Result<Type, TypeckErrors> {
     let MultiResult {

@@ -6,9 +6,9 @@ use thiserror::Error;
 use crate::{
     eval::eval,
     ident::identify,
-    atoms::Named,
     parser::parse,
     typeck::typeck,
+    prelude::*,
 };
 
 const HISTORY_FILE: &'static str = ".odlang_history";

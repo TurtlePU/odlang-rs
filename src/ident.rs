@@ -1,9 +1,8 @@
 use std::{collections::HashSet, error::Error, fmt::Display};
 
 use crate::{
-    atoms::*,
-    multi_result::*,
-    parser::*,
+    prelude::*,
+    input::*,
     syntax::{de, ty, Term, Type},
 };
 
@@ -33,26 +32,26 @@ fn rename_term(
     term: InputTerm,
 ) -> impl FnOnce(&Stack, Context) -> CtxResult<Term> {
     move |stack, context| match term {
-        TmUnit => CtxResult::ok(de::unit(), context),
-        TmVar(name) => match stack.map(name) {
+        TmUnit(_) => CtxResult::ok(de::unit(), context),
+        TmVar(_, name) => match stack.map(name) {
             Ok(v) => CtxResult::ok(de::var(v), context),
             Err(name) => CtxResult::err(context, name),
         },
-        TmAbs(name, ty, term) => new_var(stack, name, |v| {
+        TmAbs(_, name, ty, term) => new_var(stack, name, |v| {
             fmap2(
                 pipe2(rename_type(ty), rename_term(*term)),
                 move |(ty, term)| de::abs(v, ty, term),
             )
         })(context),
-        TmApp(f, x) => {
+        TmApp(_, f, x) => {
             fmap2(pipe2(rename_term(*f), rename_term(*x)), |(f, x)| {
                 de::app(f, x)
             })(stack, context)
         }
-        TmTyAbs(name, term) => new_var(stack, name, |v| {
+        TmTyAbs(_, name, term) => new_var(stack, name, |v| {
             fmap2(rename_term(*term), move |term| de::ty_abs(v, term))
         })(context),
-        TmTyApp(f, x) => {
+        TmTyApp(_, f, x) => {
             fmap2(pipe2(rename_term(*f), rename_type(x)), |(f, x)| {
                 de::ty_app(f, x)
             })(stack, context)
@@ -65,18 +64,18 @@ fn rename_type(
     input_type: InputType,
 ) -> impl FnOnce(&Stack, Context) -> CtxResult<Type> {
     move |stack, mut context| match input_type {
-        TyUnit => CtxResult::ok(ty::unit(), context),
-        TyHole => CtxResult::ok(ty::hole(context.1.next()), context),
-        TyVar(name) => match stack.map(name) {
+        TyUnit(_) => CtxResult::ok(ty::unit(), context),
+        TyHole(_) => CtxResult::ok(ty::hole(context.1.next()), context),
+        TyVar(_, name) => match stack.map(name) {
             Ok(v) => CtxResult::ok(ty::var(v), context),
             Err(err) => CtxResult::err(context, err),
         },
-        TyArrow(from, to) => {
+        TyArrow(_, from, to) => {
             fmap2(pipe2(rename_type(*from), rename_type(*to)), |(from, to)| {
                 ty::arr(from, to)
             })(stack, context)
         }
-        TyForall(name, ty) => new_var(stack, name, |v| {
+        TyForall(_, name, ty) => new_var(stack, name, |v| {
             fmap2(rename_type(*ty), move |ty| ty::forall(v, ty))
         })(context),
         TyError => unreachable!(),

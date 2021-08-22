@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Formatter}, ops::{Add, Sub}};
+use std::{fmt::Display, ops::{Add, Sub}};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Position {
@@ -6,13 +6,13 @@ pub struct Position {
     pub column: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Range {
     pub from: Position,
     pub until: Delta,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Delta {
     pub lines: usize,
     pub columns: usize,
@@ -63,7 +63,7 @@ impl Sub for Position {
 }
 
 impl Display for Position {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         write!(f, "{}:{}", self.line, self.column)
     }
 }

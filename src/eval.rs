@@ -1,4 +1,4 @@
-use crate::{syntax::*, atoms::Var, typeck};
+use crate::{syntax::*, prelude::*, typeck};
 
 pub fn eval(term: Term) -> Term {
     match (*term).clone() {
@@ -35,7 +35,7 @@ fn subst(with: Term, inside: Term, what: Var) -> Term {
     match (*inside).clone() {
         TmUnit => inside,
         TmVar(var) if var == what => with,
-        TmVar(other) => inside,
+        TmVar(_) => inside,
         TmAbs(n, ty, y) => de::abs(n, ty, subst(with, y, what)),
         TmApp(f, x) => {
             de::app(subst(with.clone(), f, what), subst(with, x, what))
