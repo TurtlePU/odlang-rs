@@ -97,14 +97,14 @@ pub mod ty {
     }
 }
 
-impl ErrValue for InputTerm {
-    fn err_value() -> Self {
+impl Default for InputTerm {
+    fn default() -> Self {
         inp::err()
     }
 }
 
-impl ErrValue for InputType {
-    fn err_value() -> Self {
+impl Default for InputType {
+    fn default() -> Self {
         ty::error()
     }
 }

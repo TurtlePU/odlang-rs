@@ -1,9 +1,12 @@
-use std::rc::Rc;
+use std::{ops::Deref, rc::Rc};
 
 use crate::prelude::*;
 
-pub type Term = Rc<TermData>;
-pub type Type = Rc<TypeData>;
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Term(Rc<TermData>);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Type(Rc<TypeData>);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TermData {
@@ -19,7 +22,7 @@ pub enum TermData {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeData {
     TyUnit,
-    TyAlpha,
+    TyHole,
     TyVar(Var),
     TyArrow(Type, Type),
     TyForall(Var, Type),
@@ -73,7 +76,7 @@ pub mod ty {
     }
 
     pub fn hole() -> Type {
-        TyAlpha.into()
+        TyHole.into()
     }
 
     pub fn var(key: impl Into<Var>) -> Type {
@@ -99,15 +102,29 @@ impl From<Var> for Term {
     }
 }
 
-impl ErrValue for Term {
-    fn err_value() -> Self {
+impl From<TermData> for Term {
+    fn from(data: TermData) -> Self {
+        Self(data.into())
+    }
+}
+
+impl Default for Term {
+    fn default() -> Self {
         de::error()
+    }
+}
+
+impl Deref for Term {
+    type Target = TermData;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
 impl Named for Term {
     fn pprint(&self, names: &Names) -> String {
-        match (**self).clone() {
+        match (*self.0).clone() {
             TmUnit => "()".into(),
             TmVar(var) => names[var].clone(),
             TmAbs(n, t, y) => {
@@ -144,9 +161,23 @@ impl From<Var> for Type {
     }
 }
 
-impl ErrValue for Type {
-    fn err_value() -> Self {
+impl From<TypeData> for Type {
+    fn from(data: TypeData) -> Self {
+        Self(data.into())
+    }
+}
+
+impl Default for Type {
+    fn default() -> Self {
         ty::error()
+    }
+}
+
+impl Deref for Type {
+    type Target = TypeData;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
@@ -154,10 +185,10 @@ impl Named for Type {
     fn pprint(&self, names: &Names) -> String {
         match (**self).clone() {
             TyUnit => "()".into(),
-            TyAlpha => "_".into(),
+            TyHole => "_".into(),
             TyVar(var) => names[var].clone(),
             TyArrow(f, t) => match *f {
-                TyUnit | TyAlpha | TyVar(_) => {
+                TyUnit | TyHole | TyVar(_) => {
                     format!("{} -> {}", f.pprint(names), t.pprint(names))
                 }
                 _ => {

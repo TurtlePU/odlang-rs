@@ -2,144 +2,75 @@ use std::{
     collections::{HashSet, LinkedList, VecDeque},
     hash::Hash,
     marker::PhantomData,
-    ops::{Add, Shr},
+    ops::Add,
 };
 
 #[derive(Debug)]
-pub struct MultiResult<T, S, E> {
-    pub result: T,
-    pub state: S,
-    pub errors: E,
+pub struct MultiResult<R, C> {
+    pub result: R,
+    pub collect: C,
 }
 
-impl<T, U, S, E> Add<MultiResult<U, S, E>> for MultiResult<T, S, E>
+impl<Q, R, C> Add<MultiResult<R, C>> for MultiResult<Q, C>
 where
-    S: Semigroup,
-    E: Semigroup,
+    C: Semigroup,
 {
-    type Output = MultiResult<(T, U), S, E>;
+    type Output = MultiResult<(Q, R), C>;
 
-    fn add(self, rhs: MultiResult<U, S, E>) -> Self::Output {
+    fn add(self, rhs: MultiResult<R, C>) -> Self::Output {
         MultiResult {
             result: (self.result, rhs.result),
-            state: self.state.app(rhs.state),
-            errors: self.errors.app(rhs.errors),
+            collect: self.collect.app(rhs.collect),
         }
     }
 }
 
-impl<T, U, R, S, E, F> Shr<F> for MultiResult<T, R, E>
-where
-    F: FnOnce(R) -> MultiResult<U, S, E>,
-    E: Semigroup,
-{
-    type Output = MultiResult<(T, U), S, E>;
-
-    fn shr(self, rhs: F) -> Self::Output {
-        let rhs = rhs(self.state);
-        MultiResult {
-            result: (self.result, rhs.result),
-            state: rhs.state,
-            errors: self.errors.app(rhs.errors),
-        }
-    }
-}
-
-impl<T, S, E> MultiResult<T, S, E> {
-    pub fn new<E1>(result: T, state: S, error: E1) -> Self
+impl<R, C> MultiResult<R, C> {
+    pub fn new<I>(result: R, item: I) -> Self
     where
-        E: Singleton<E1>,
+        C: Singleton<I>,
     {
         MultiResult {
             result,
-            state,
-            errors: E::single(error),
+            collect: C::single(item),
         }
     }
 
-    pub fn ok(result: T, state: S) -> Self
+    pub fn item<I>(item: I) -> Self
     where
-        E: Default,
+        R: Default,
+        C: Singleton<I>,
     {
-        Self::new(result, state, empty())
+        Self::new(R::default(), item)
     }
 
-    pub fn err<E1>(state: S, error: E1) -> Self
-    where
-        T: ErrValue,
-        E: Singleton<E1>,
-    {
-        Self::new(T::err_value(), state, error)
-    }
-
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> MultiResult<U, S, E> {
+    pub fn map<Q>(self, f: impl FnOnce(R) -> Q) -> MultiResult<Q, C> {
         MultiResult {
             result: f(self.result),
-            state: self.state,
-            errors: self.errors,
+            collect: self.collect,
         }
     }
 
-    pub fn then<U, F>(self, f: impl FnOnce(T) -> F) -> MultiResult<U, S, E>
+    pub fn then<Q>(
+        self,
+        f: impl FnOnce(R) -> MultiResult<Q, C>,
+    ) -> MultiResult<Q, C>
     where
-        E: Semigroup,
-        F: FnOnce(S) -> MultiResult<U, S, E>,
+        C: Semigroup,
     {
-        let MultiResult {
-            result,
-            state,
-            errors,
-        } = f(self.result)(self.state);
-        MultiResult {
-            result,
-            state,
-            errors: self.errors.app(errors),
-        }
+        let mut result = f(self.result);
+        result.collect = self.collect.app(result.collect);
+        result
     }
 }
 
-impl<T, E> From<T> for MultiResult<T, (), E>
+impl<R, C> From<R> for MultiResult<R, C>
 where
-    E: Default,
+    C: Default,
 {
-    fn from(result: T) -> Self {
-        Self::new(result, (), empty())
+    fn from(result: R) -> Self {
+        Self::new(result, empty())
     }
-}
-
-pub fn pipe<T, U, S, E>(
-    first: impl FnOnce(S) -> MultiResult<T, S, E>,
-    second: impl FnOnce(S) -> MultiResult<U, S, E>,
-) -> impl FnOnce(S) -> MultiResult<(T, U), S, E>
-where
-    E: Semigroup,
-{
-    move |state| first(state) >> second
-}
-
-pub fn fmap<T, U, S, E>(
-    gen: impl FnOnce(S) -> MultiResult<T, S, E>,
-    map: impl FnOnce(T) -> U,
-) -> impl FnOnce(S) -> MultiResult<U, S, E>
-where
-    E: Semigroup,
-{
-    move |state| gen(state).map(map)
-}
-
-pub fn fthen<T, U, S, E, F>(
-    gen: impl FnOnce(S) -> MultiResult<T, S, E>,
-    then: impl FnOnce(T) -> F,
-) -> impl FnOnce(S) -> MultiResult<U, S, E>
-where
-    F: FnOnce(S) -> MultiResult<U, S, E>,
-    E: Semigroup,
-{
-    move |state| gen(state).then(then)
-}
-
-pub trait ErrValue {
-    fn err_value() -> Self;
 }
 
 pub trait Semigroup {

@@ -5,22 +5,19 @@ use itertools::Itertools;
 use crate::{prelude::*, syntax::*};
 
 pub fn typeck(term: Term) -> Result<(), TypeckErrors> {
-    let MultiResult {
-        result: _,
-        state: _,
-        errors,
-    } = typeck_term(term)((HashMap::default(), AlphaGen::default()));
-    if errors.is_empty() {
+    let MultiResult { result: _, collect } =
+        Typeck::default().typeck_term(term);
+    if collect.is_empty() {
         Ok(())
     } else {
-        Err(errors)
+        Err(collect)
     }
 }
 
 pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
     match (*body).clone() {
         TyUnit => body,
-        TyAlpha => body,
+        TyHole => body,
         TyVar(var) if var == what => with,
         TyVar(_) => body,
         TyArrow(from, to) => ty::arr(
@@ -67,50 +64,52 @@ impl Named for TypeckError {
     }
 }
 
-type Typeck = (HashMap<Var, Type>, AlphaGen);
+#[derive(Default)]
+struct Typeck(HashMap<Var, Type>, AlphaGen);
 
-type TypeckResult = MultiResult<Type, Typeck, VecDeque<TypeckError>>;
+type TypeckResult = MultiResult<Type, VecDeque<TypeckError>>;
 
-fn typeck_term(term: Term) -> impl FnOnce(Typeck) -> TypeckResult {
-    move |state| match (*term).clone() {
-        TmUnit => TypeckResult::ok(ty::unit(), state),
-        TmVar(v) => TypeckResult::ok(get_or_alpha(&state, v), state),
-        TmAbs(v, t, y) => {
-            let tt = t.clone();
-            fmap(typeck_term(y), move |y| ty::arr(tt, y))(insert(state, v, t))
+impl Typeck {
+    fn typeck_term(&mut self, term: Term) -> TypeckResult {
+        match (*term).clone() {
+            TmUnit => ty::unit().into(),
+            TmVar(v) => self.get_or_alpha(v).into(),
+            TmAbs(v, t, y) => self
+                .insert(v, t.clone())
+                .typeck_term(y)
+                .map(move |y| ty::arr(t, y)),
+            TmApp(f, x) => (self.typeck_term(f) + self.typeck_term(x))
+                .then(|(f, x)| assert_app(f, x)),
+            TmTyAbs(n, x) => self.typeck_term(x).map(move |x| ty::forall(n, x)),
+            TmTyApp(f, t) => {
+                self.typeck_term(f).then(move |f| assert_ty_app(f, t))
+            }
+            TmError => unreachable!(),
         }
-        TmApp(f, x) => fthen(pipe(typeck_term(f), typeck_term(x)), |(f, x)| {
-            assert_app(f, x)
-        })(state),
-        TmTyAbs(n, x) => fmap(typeck_term(x), |x| ty::forall(n, x))(state),
-        TmTyApp(f, t) => fthen(typeck_term(f), |f| assert_ty_app(f, t))(state),
-        TmError => unreachable!(),
+    }
+
+    fn get_or_alpha(&self, v: Var) -> Type {
+        self.0.get(&v).cloned().unwrap_or_else(ty::hole)
+    }
+
+    fn insert(&mut self, v: Var, t: Type) -> &mut Self {
+        self.0.insert(v, t);
+        self
     }
 }
 
-fn get_or_alpha(state: &Typeck, v: Var) -> Type {
-    state.0.get(&v).cloned().unwrap_or_else(ty::hole)
-}
-
-fn insert(mut state: Typeck, v: Var, t: Type) -> Typeck {
-    state.0.insert(v, t);
-    state
-}
-
-fn assert_app(fun: Type, arg: Type) -> impl FnOnce(Typeck) -> TypeckResult {
-    move |state| match (*fun).clone() {
-        TyArrow(from, to) if from == arg => TypeckResult::ok(to, state),
-        TyArrow(from, to) => TypeckResult::new(to, state, NotEqual(from, arg)),
-        _ => TypeckResult::err(state, NotAFunction(fun)),
+fn assert_app(fun: Type, arg: Type) -> TypeckResult {
+    match (*fun).clone() {
+        TyArrow(from, to) if from == arg => to.into(),
+        TyArrow(from, to) => TypeckResult::new(to, NotEqual(from, arg)),
+        _ => TypeckResult::item(NotAFunction(fun)),
     }
 }
 
-fn assert_ty_app(fun: Type, arg: Type) -> impl FnOnce(Typeck) -> TypeckResult {
-    move |state| match (*fun).clone() {
-        TyForall(var, inner) => {
-            TypeckResult::ok(subst_type(inner, arg, var), state)
-        }
-        _ => TypeckResult::err(state, NotAForall(fun)),
+fn assert_ty_app(fun: Type, arg: Type) -> TypeckResult {
+    match (*fun).clone() {
+        TyForall(var, inner) => subst_type(inner, arg, var).into(),
+        _ => TypeckResult::item(NotAForall(fun)),
     }
 }
 
@@ -120,9 +119,6 @@ mod tests {
 
     #[test]
     fn simple_typeck() {
-        assert_eq!(
-            typeck(de::abs(0, ty::unit(), de::var(0))),
-            Ok(())
-        );
+        assert_eq!(typeck(de::abs(0, ty::unit(), de::var(0))), Ok(()));
     }
 }

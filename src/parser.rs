@@ -13,11 +13,9 @@ pub fn parse(text: &str) -> Result<InputTerm, ParseErrors> {
         Tokenizer::from(text).partition_result();
     let ParseResult {
         result,
-        state,
-        errors,
-    } = parse_term(0)(&tokens[..]);
-    assert!(state.is_empty());
-    let error = ParseErrors(errs).app(errors);
+        collect,
+    } = Tokens(&tokens[..]).parse();
+    let error = ParseErrors(errs).app(collect);
     if error.0.is_empty() {
         Ok(result)
     } else {
@@ -124,12 +122,15 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-pub type Tokens<'a> = &'a [Token<'a>];
+pub type ParseResult<'a, T> = MultiResult<T, ParseErrors>;
 
-pub type ParseResult<'a, T> = MultiResult<T, Tokens<'a>, ParseErrors>;
+#[derive(Clone, Copy)]
+struct Tokens<'a>(&'a [Token<'a>]);
 
-fn parse_term(ident: usize) -> impl FnOnce(Tokens) -> ParseResult<InputTerm> {
-    move |t| todo!()
+impl<'a> Tokens<'a> {
+    fn parse(&mut self) -> ParseResult<InputTerm> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
