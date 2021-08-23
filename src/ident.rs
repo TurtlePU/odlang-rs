@@ -1,56 +1,51 @@
 use std::{collections::HashSet, error::Error, fmt::Display};
 
 use crate::{
-    prelude::*,
     input::*,
+    prelude::*,
     syntax::{de, ty, Term, Type},
 };
 
-pub type IdResult = Result<(Term, Names, AlphaGen), Unbound>;
+pub type IdResult = Result<(Term, Names), Unbound>;
 
 pub fn identify(term: InputTerm) -> IdResult {
     let MultiResult {
         result,
-        state: (names, alpha),
+        state,
         errors,
-    } = rename_term(term)(&Stack::default(), Context::default());
+    } = rename_term(term)(&Stack::default(), Names::default());
     if errors.0.is_empty() {
-        Ok((result, names, alpha))
+        Ok((result, state))
     } else {
         Err(errors)
     }
 }
 
-type CtxResult<T> = MultiResult<T, Context, Unbound>;
-
-type Context = (Names, AlphaGen);
+type CtxResult<T> = MultiResult<T, Names, Unbound>;
 
 #[derive(Default)]
 struct Stack<'a>(Option<(&'a Self, String, Var)>);
 
 fn rename_term(
     term: InputTerm,
-) -> impl FnOnce(&Stack, Context) -> CtxResult<Term> {
+) -> impl FnOnce(&Stack, Names) -> CtxResult<Term> {
     move |stack, context| match term {
         TmUnit(_) => CtxResult::ok(de::unit(), context),
-        TmVar(_, name) => match stack.map(name) {
-            Ok(v) => CtxResult::ok(de::var(v), context),
-            Err(name) => CtxResult::err(context, name),
-        },
-        TmAbs(_, name, ty, term) => new_var(stack, name, |v| {
+        TmVar(_, name) => find_var(name)(stack, context),
+        TmAbs(_, name, ty, term) => new_var(name, |var| {
             fmap2(
                 pipe2(rename_type(ty), rename_term(*term)),
-                move |(ty, term)| de::abs(v, ty, term),
+                move |(ty, term)| de::abs(var, ty, term),
             )
-        })(context),
+        })(stack, context),
         TmApp(_, f, x) => {
             fmap2(pipe2(rename_term(*f), rename_term(*x)), |(f, x)| {
                 de::app(f, x)
             })(stack, context)
         }
-        TmTyAbs(_, name, term) => new_var(stack, name, |v| {
-            fmap2(rename_term(*term), move |term| de::ty_abs(v, term))
-        })(context),
+        TmTyAbs(_, name, term) => new_var(name, |var| {
+            fmap2(rename_term(*term), move |term| de::ty_abs(var, term))
+        })(stack, context),
         TmTyApp(_, f, x) => {
             fmap2(pipe2(rename_term(*f), rename_type(x)), |(f, x)| {
                 de::ty_app(f, x)
@@ -62,49 +57,55 @@ fn rename_term(
 
 fn rename_type(
     input_type: InputType,
-) -> impl FnOnce(&Stack, Context) -> CtxResult<Type> {
-    move |stack, mut context| match input_type {
-        TyUnit(_) => CtxResult::ok(ty::unit(), context),
-        TyHole(_) => CtxResult::ok(ty::hole(context.1.next()), context),
-        TyVar(_, name) => match stack.map(name) {
-            Ok(v) => CtxResult::ok(ty::var(v), context),
-            Err(err) => CtxResult::err(context, err),
-        },
+) -> impl FnOnce(&Stack, Names) -> CtxResult<Type> {
+    move |stack, names| match input_type {
+        TyUnit(_) => CtxResult::ok(ty::unit(), names),
+        TyHole(_) => CtxResult::ok(ty::hole(), names),
+        TyVar(_, name) => find_var(name)(stack, names),
         TyArrow(_, from, to) => {
             fmap2(pipe2(rename_type(*from), rename_type(*to)), |(from, to)| {
                 ty::arr(from, to)
-            })(stack, context)
+            })(stack, names)
         }
-        TyForall(_, name, ty) => new_var(stack, name, |v| {
+        TyForall(_, name, ty) => new_var(name, |v| {
             fmap2(rename_type(*ty), move |ty| ty::forall(v, ty))
-        })(context),
+        })(stack, names),
         TyError => unreachable!(),
     }
 }
 
-fn new_var<'a, F, T>(
-    s: &'a Stack,
-    n: String,
-    then: impl FnOnce(Var) -> F + 'a,
-) -> impl FnOnce(Context) -> T + 'a
+fn new_var<F, T>(
+    name: String,
+    then: impl FnOnce(Var) -> F,
+) -> impl FnOnce(&Stack, Names) -> T
 where
-    F: FnOnce(&Stack, Context) -> T + 'a,
+    F: FnOnce(&Stack, Names) -> T,
 {
-    move |mut c| {
-        let v = c.0.push(n.clone());
-        let stack = s.push(n, v);
-        then(v)(&stack, c)
+    move |stack, mut names| {
+        let var = names.push(name.clone());
+        let stack = stack.push(name, var);
+        then(var)(&stack, names)
+    }
+}
+
+fn find_var<T>(name: String) -> impl FnOnce(&Stack, Names) -> CtxResult<T>
+where
+    T: From<Var> + ErrValue,
+{
+    move |stack, state| match stack.map(name) {
+        Ok(var) => CtxResult::ok(var.into(), state),
+        Err(error) => CtxResult::err(state, error),
     }
 }
 
 impl<'a> Stack<'a> {
-    fn push(&'a self, name: String, v: Var) -> Self {
-        Self(Some((self, name, v)))
+    fn push(&'a self, name: String, var: Var) -> Self {
+        Self(Some((self, name, var)))
     }
 
     fn map(&self, name: String) -> Result<Var, String> {
         match self.0 {
-            Some((_, ref key, v)) if *key == name => Ok(v),
+            Some((_, ref key, var)) if *key == name => Ok(var),
             Some((prev, _, _)) => prev.map(name),
             None => Err(name),
         }
@@ -112,17 +113,17 @@ impl<'a> Stack<'a> {
 }
 
 fn pipe2<T, U>(
-    first: impl FnOnce(&Stack, Context) -> CtxResult<T>,
-    second: impl FnOnce(&Stack, Context) -> CtxResult<U>,
-) -> impl FnOnce(&Stack, Context) -> CtxResult<(T, U)> {
-    |stack, context| first(stack, context) >> |context| second(stack, context)
+    first: impl FnOnce(&Stack, Names) -> CtxResult<T>,
+    second: impl FnOnce(&Stack, Names) -> CtxResult<U>,
+) -> impl FnOnce(&Stack, Names) -> CtxResult<(T, U)> {
+    |stack, names| first(stack, names) >> |names| second(stack, names)
 }
 
 fn fmap2<T, U>(
-    gen: impl FnOnce(&Stack, Context) -> CtxResult<T>,
+    gen: impl FnOnce(&Stack, Names) -> CtxResult<T>,
     map: impl FnOnce(T) -> U,
-) -> impl FnOnce(&Stack, Context) -> CtxResult<U> {
-    move |stack, context| gen(stack, context).map(map)
+) -> impl FnOnce(&Stack, Names) -> CtxResult<U> {
+    move |stack, names| gen(stack, names).map(map)
 }
 
 #[derive(Default, Debug)]

@@ -4,14 +4,14 @@ use itertools::Itertools;
 
 use crate::{prelude::*, syntax::*};
 
-pub fn typeck(gen: AlphaGen, term: Term) -> Result<Type, TypeckErrors> {
+pub fn typeck(term: Term) -> Result<(), TypeckErrors> {
     let MultiResult {
-        result,
+        result: _,
         state: _,
         errors,
-    } = typeck_term(term)((HashMap::default(), gen));
+    } = typeck_term(term)((HashMap::default(), AlphaGen::default()));
     if errors.is_empty() {
-        Ok(result)
+        Ok(())
     } else {
         Err(errors)
     }
@@ -20,7 +20,7 @@ pub fn typeck(gen: AlphaGen, term: Term) -> Result<Type, TypeckErrors> {
 pub fn subst_type(body: Type, with: Type, what: Var) -> Type {
     match (*body).clone() {
         TyUnit => body,
-        TyAlpha(_) => body,
+        TyAlpha => body,
         TyVar(var) if var == what => with,
         TyVar(_) => body,
         TyArrow(from, to) => ty::arr(
@@ -72,9 +72,9 @@ type Typeck = (HashMap<Var, Type>, AlphaGen);
 type TypeckResult = MultiResult<Type, Typeck, VecDeque<TypeckError>>;
 
 fn typeck_term(term: Term) -> impl FnOnce(Typeck) -> TypeckResult {
-    move |mut state| match (*term).clone() {
+    move |state| match (*term).clone() {
         TmUnit => TypeckResult::ok(ty::unit(), state),
-        TmVar(v) => TypeckResult::ok(get_or_alpha(&mut state, v), state),
+        TmVar(v) => TypeckResult::ok(get_or_alpha(&state, v), state),
         TmAbs(v, t, y) => {
             let tt = t.clone();
             fmap(typeck_term(y), move |y| ty::arr(tt, y))(insert(state, v, t))
@@ -88,8 +88,8 @@ fn typeck_term(term: Term) -> impl FnOnce(Typeck) -> TypeckResult {
     }
 }
 
-fn get_or_alpha(state: &mut Typeck, v: Var) -> Type {
-    state.0.get(&v).cloned().unwrap_or_else(|| next_hole(state))
+fn get_or_alpha(state: &Typeck, v: Var) -> Type {
+    state.0.get(&v).cloned().unwrap_or_else(ty::hole)
 }
 
 fn insert(mut state: Typeck, v: Var, t: Type) -> Typeck {
@@ -114,23 +114,15 @@ fn assert_ty_app(fun: Type, arg: Type) -> impl FnOnce(Typeck) -> TypeckResult {
     }
 }
 
-fn next_hole(state: &mut Typeck) -> Type {
-    ty::hole(state.1.next())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn typeck(term: Term) -> Result<Type, VecDeque<TypeckError>> {
-        super::typeck(AlphaGen::default(), term)
-    }
 
     #[test]
     fn simple_typeck() {
         assert_eq!(
             typeck(de::abs(0, ty::unit(), de::var(0))),
-            Ok(ty::arr(ty::unit(), ty::unit()))
+            Ok(())
         );
     }
 }

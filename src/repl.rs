@@ -41,8 +41,8 @@ pub fn repl() -> Result<(), HistoryError> {
 fn process_line<'a>(
     line: &'a str,
 ) -> Result<String, Box<dyn Error + 'a>> {
-    let (term, names, alpha) = identify(parse(line)?)?;
-    match typeck(alpha, term.clone()) {
+    let (term, names) = identify(parse(line)?)?;
+    match typeck(term.clone()) {
         Ok(_) => Ok(eval(term).pprint(&names)),
         Err(err) => Err(err.pprint(&names).into()),
     }

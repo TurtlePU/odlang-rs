@@ -19,7 +19,7 @@ pub enum TermData {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeData {
     TyUnit,
-    TyAlpha(Alpha),
+    TyAlpha,
     TyVar(Var),
     TyArrow(Type, Type),
     TyForall(Var, Type),
@@ -72,8 +72,8 @@ pub mod ty {
         TyUnit.into()
     }
 
-    pub fn hole(num: impl Into<Alpha>) -> Type {
-        TyAlpha(num.into()).into()
+    pub fn hole() -> Type {
+        TyAlpha.into()
     }
 
     pub fn var(key: impl Into<Var>) -> Type {
@@ -90,6 +90,12 @@ pub mod ty {
 
     pub fn error() -> Type {
         TyError.into()
+    }
+}
+
+impl From<Var> for Term {
+    fn from(var: Var) -> Self {
+        de::var(var)
     }
 }
 
@@ -132,6 +138,12 @@ impl Named for Term {
     }
 }
 
+impl From<Var> for Type {
+    fn from(var: Var) -> Self {
+        ty::var(var)
+    }
+}
+
 impl ErrValue for Type {
     fn err_value() -> Self {
         ty::error()
@@ -142,10 +154,10 @@ impl Named for Type {
     fn pprint(&self, names: &Names) -> String {
         match (**self).clone() {
             TyUnit => "()".into(),
-            TyAlpha(alp) => format!("{}", alp),
+            TyAlpha => "_".into(),
             TyVar(var) => names[var].clone(),
             TyArrow(f, t) => match *f {
-                TyUnit | TyAlpha(_) | TyVar(_) => {
+                TyUnit | TyAlpha | TyVar(_) => {
                     format!("{} -> {}", f.pprint(names), t.pprint(names))
                 }
                 _ => {
