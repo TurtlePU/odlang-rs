@@ -2,10 +2,10 @@ use std::{
     collections::{HashSet, LinkedList, VecDeque},
     hash::Hash,
     marker::PhantomData,
-    ops::Add,
+    ops::{Add, AddAssign, Shl},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MultiResult<R, C> {
     pub result: R,
     pub collect: C,
@@ -22,6 +22,26 @@ where
             result: (self.result, rhs.result),
             collect: self.collect.app(rhs.collect),
         }
+    }
+}
+
+impl<R, C, C1> AddAssign<C1> for MultiResult<R, C>
+where
+    C: Semigroup + Singleton<C1>,
+{
+    fn add_assign(&mut self, rhs: C1) {
+        self.collect.push(rhs);
+    }
+}
+
+impl<R, T, C> Shl<MultiResult<T, C>> for MultiResult<R, C>
+where
+    C: Semigroup,
+{
+    type Output = Self;
+
+    fn shl(self, rhs: MultiResult<T, C>) -> Self::Output {
+        (self + rhs).map(|(lhs, _)| lhs)
     }
 }
 
@@ -129,6 +149,7 @@ impl<T> Semigroup for VecDeque<T> {
 
 pub trait Singleton<T> {
     fn single(elem: T) -> Self;
+    fn push(&mut self, elem: T);
 }
 
 pub struct Empty<T>(PhantomData<T>);
@@ -144,6 +165,8 @@ where
     fn single(_: Empty<T>) -> Self {
         Self::default()
     }
+
+    fn push(&mut self, _elem: Empty<T>) {}
 }
 
 impl<T, U, T1, U1> Singleton<(T1, U1)> for (T, U)
@@ -154,6 +177,11 @@ where
     fn single((t, u): (T1, U1)) -> Self {
         (T::single(t), U::single(u))
     }
+
+    fn push(&mut self, elem: (T1, U1)) {
+        self.0.push(elem.0);
+        self.1.push(elem.1);
+    }
 }
 
 impl<T> Singleton<T> for VecDeque<T> {
@@ -161,6 +189,10 @@ impl<T> Singleton<T> for VecDeque<T> {
         let mut result = Self::new();
         result.push_back(elem);
         result
+    }
+
+    fn push(&mut self, elem: T) {
+        self.push_back(elem);
     }
 }
 
@@ -173,6 +205,10 @@ where
         result.insert(elem);
         result
     }
+
+    fn push(&mut self, elem: T) {
+        self.insert(elem);
+    }
 }
 
 impl<T> Singleton<T> for LinkedList<T> {
@@ -180,5 +216,9 @@ impl<T> Singleton<T> for LinkedList<T> {
         let mut result = Self::new();
         result.push_back(elem);
         result
+    }
+
+    fn push(&mut self, elem: T) {
+        self.push_back(elem);
     }
 }

@@ -136,6 +136,10 @@ where
     fn single(elem: T) -> Self {
         Self(HashSet::single(elem))
     }
+
+    fn push(&mut self, elem: T) {
+        self.0.push(elem)
+    }
 }
 
 #[cfg(test)]
@@ -153,7 +157,7 @@ mod tests {
     #[test]
     fn triv() {
         assert_eq!(
-            parsed(r"\x:().x").unwrap().0,
+            parsed(r"x: () -> x").unwrap().0,
             de::abs(0, ty::unit(), de::var(0))
         );
     }
@@ -161,7 +165,7 @@ mod tests {
     #[test]
     fn breaks_rosser() {
         assert_eq!(
-            parsed(r"\y:(). (\x:(). \y:(). x) y").unwrap().0,
+            parsed(r"y: () -> (x: () -> y: () -> x) y").unwrap().0,
             de::abs(
                 0,
                 ty::unit(),
